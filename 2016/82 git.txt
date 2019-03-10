@@ -1,0 +1,71 @@
+
+***********************************************************************
+
+添加现有项目到git.oschina
+git init    //初始化文件夹为代码仓库
+git add .    //添加本地所有文件到
+git commit -m "你的提交信息"    //向本地仓库提交add的所有文件
+git remote add origin https://git.oschina.net/sanchi3/ThreeKillers.git    //将OSC的远程分支拉取到本地
+git pull origin master    //拉取master分支的文件信息
+git push origin master    //提交本地仓库的修改到远程master分支
+
+Git
+
+创建版本库：把目标目录D:/responsity变为git资源目录；
+	git init 目录；
+	
+把文件添加到版本库中：
+	在D:/responsity中新建test.txt；
+	git add test.txt：添加到暂存区；
+	git commit：提交到仓库；
+	git diff test.txt：查看文件的不同；
+	
+修改
+	修改文件，然后git commit；
+	
+版本回退：
+	git log：显示提交记录；
+	git reset  –hard HEAD~100：版本回退到前100个版本；
+
+工作区/暂存区：
+	工作区：电脑上看到的工作目录；
+	暂存区：工作区有一个隐藏目录.git,这个不属于工作区，这是版本库。其中版本库里面存了很多东西，
+		其中最重要的就是stage(暂存区)，还有Git为我们自动创建了第一个分支master,以及指向master的一个指针HEAD。
+	git add：把文件提交到暂存区；
+	git commit；把暂存区的内容提交到当前分支；
+	
+撤销修改：
+	git checkout –test.txt：把test.txt文件在工作区（不包含暂存区）做的修改全部撤销；
+	
+推送到远程库：git push；
+
+创建合并分支：
+	git checkout -b branchName：创建并切换到某分支；
+	git branch branchName：查看分支；
+	git checkout branchName：切换分支；
+	git merge branchName：合并某分支到当前分支；
+	git branch –d branchName：删除分支；
+	
+	通常合并分支时，git一般使用”Fast forward”模式，在这种模式下，删除分支后，会丢掉分支信息，现在我们来使用带参数 –no-ff来禁用”Fast forward”模式。
+	git merge –no-ff  -m "注释" branchName；
+	
+	分支策略：首先master主分支应该是非常稳定的，也就是用来发布新版本，一般情况下不允许在上面干活，
+		干活一般情况下在新建的dev分支上干活，干完后，比如上要发布，或者说dev分支代码稳定后可以合并到主分支master上来。
+		
+推送分支就是把该分支上所有本地提交到远程库中：git push origin branchName；
+
+抓取分支：
+	A新建dev分支，推送到远程；
+	B把项目克隆下来，新建本地的相同分支名字dev分支：git checkout  –b dev origin/dev；
+	B修改文件，推送到远程dev；
+	A修改相同的文件，试图推送到远程库时报错，产生冲突了；
+	A先用git pull把最新的提交从origin/dev抓下来，然后在本地合并，解决冲突，再推送。
+	A git pull也失败了，原因是没有指定本地dev分支与远程origin/dev分支的链接，根据提示，设置dev和origin/dev的链接；
+		git branch --set-upstream-to=origin/dev dev；
+		
+	因此：多人协作工作模式一般是这样的：
+		首先，可以试图用git push origin branch-name推送自己的修改.
+		如果推送失败，则因为远程分支比你的本地更新早，需要先用git pull试图合并。
+		如果合并有冲突，则需要解决冲突，并在本地提交。再用git push origin branch-name推送。
+	
+	

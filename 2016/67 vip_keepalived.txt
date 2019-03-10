@@ -1,0 +1,238 @@
+
+***********************************************************************
+
+两台lvs上启动keepalived，real_server上启动lvs；
+
+LVS
+	负载均衡的方式：VS/NAT、VS/TUN、VS/DR；
+	
+		NAT：网络地址翻译技术，当用户请求到达调度器时，调度器将请求报文的目标地址（即虚拟IP地址）改写为选定的real server地址，同时将报文的
+			目标端口也改成选定的real server的相应端口，最后将报文请求发送到选定的real server。在服务器端得到数据后，real server将数据返回给
+			用户时，需要再次经过负载调度器将报文的源地址和源端口改成虚拟IP地址和相应端口，然后把数据发送给用户，完成整个负载调度过程；
+			
+		TUN：通过IP隧道技术实现虚拟服务器。调度器采用IP隧道技术将用户请求转发到某个real server，而这个real server将直接响应用户的请求，不再
+			经过前端调度器。此外，对real server的地域位置没有要求，可以和Director Server位于同一个网段，也可以在独立的一个网段中。
+				隧道技术是一种数据包封装技术，它是将原始IP包（其报头包含原始发送者和最终目的地）封装在另一个数据包（称为封装的IP包）的数据净荷中进行传输。
+				
+		DR：直接路由技术实现虚拟服务器。通过改写请求报文的MAC地址，将请求发送到real server，而real server将响应直接返回给客户，性能最好，
+			但要求Director Server和Real Server必须由一块网卡连在同一物理网段上；
+		
+	调度算法
+		1、轮询；2、加权；3、最少连接；4、加权最少连接；5、ip hash；6、url hash；
+	
+keepalived
+
+VRRP协议
+	一种主备模式的协议，通过VRRP可以在网络发生故障时透明地进行设备切换而不影响主机间的数据通信；
+	处于MASTER角色的路由器会一直发送VRRP数据包（重点：通过IP多播），处于BACKUP角色的路由器只接收MASTER发过来的报文信息，用来监控MASTER；
+		MASTER不可用时，BACKUP就收不到报文，于是就认定MASTER故障，接着多台BACKUP就会进行选举，优先级高的BACKUP将成为新的MASTER；
+	MASTER拥有对外服务的虚拟IP，如ARP请求、ICMP、数据转发等；
+	
+keepalived工作在三、四、五层；
+	三层：通过ICMP协议向服务器集群中的所有节点发送一个ICMP的数据包，如果某个节点没响应，就认为这个节点故障了。类似PING；
+	四层：探测到进程 + 端口没有响应数据返回，即故障；
+	五层：根据用户设定的规则判断，如kill 0 pid；
+	
+安装
+	tar -zxvf keepalived.tar.gz
+	cd keepalived./configure --sysconf=/etc --with-kernel-dir=/usr/src/kernels/2.6.32-431.5.1.e16.x86_64 #指定使用内核源码中的头文件，即include目录；只有在使用LVS时用到，其他时候不用；
+	make
+	make install
+	ln -s /usr/local/sbin/keepalived /sbin/keepalived #建立连接
+	chkconfig -add keepalived #增加所指定的系统服务，让chkconfig指令得以管理它，并同时在系统启动的叙述文件内增加相关数据。
+	chkconfig -level 35 keepalived on #指定读系统服务要在哪一个执行等级中开启或关毕。
+	
+配置：/etc/keepalived/keepalived.conf
+	包括：全局配置、VRRPD配置、LVS配置；
+	
+	#全局配置
+	global_defs{
+		notification_email{
+			dba.gao@gmail.com
+			ixdba@163.com
+		}
+		
+		notification_email_from keepalived@localhost
+		smtp_server 192.168.200.1
+		smtp_connect_timeout 30
+		router_id LVS_DEVEL
+	}
+	
+	#VRRPD配置，分同步组配置、实例配置
+	
+	同步组配置
+		相对于多个VRRP实例而言，在多个VRRP实例的环境中，每个VRRP实例所对应的网络环境会有所不同，假设一个实例处于网段A，另一个实例处于网段B，
+		而如果VRRPD只配置了A网段的检测，那么当B网段主机出现故障时，VRRPD会认为自身仍处于正常状态，而不会进行主备节点的切换，将所有VRRP实例
+		都加入同步组中，这样任何一个实例出现问题，都会导致keepalived进行主备切换；
+		
+		vrrp_sync_group G1{
+			group{
+				VI_1
+				VI_2
+				VI_5
+			}
+			
+			notify_backup "/usr/local/bin/vrrp.back arg1 arg2" #当keepalived进入bakcup状态时要执行的脚本。
+			notify_master "/usr/local/bin/vrrp.mast arg1 arg2" #当keepalived进入master状态时要执行的脚本。
+			notify_fault "/usr/local/bin/vrrp.fault arg1 arg2" #当keepalived进入fault状态时要执行的脚本。
+			notify_stop "/usr/local/bin/vrrp.stop arg1 arg2" #当keepalived进入stop状态时要执行的脚本。
+		}
+		
+		vrrp_sync_group G2{
+			group{
+				VI_3
+				VI_4
+			}
+		}
+		
+	实例配置
+		vrrp_instance VI_1{
+			state MASTER #主服务器
+			interface eth0 #用于指定HA检测网络的接口
+			virtual_router_id 51 #虚拟路由标识，同一个VRRP实例使用唯一的标识，即同一个vrrp_instance下，MASTER和BACKUP必须是一致的；
+			priority 100 #节点优先级，MASTER必须大于BACKUP
+			advert_int 1 #MASTER与BACKUP主机之间同步检查的时间间隔，单位是秒
+			mcast_src_ip <IPADDR> #用于设置发送多播包的地址，如果不设置，将使用绑定的网卡所对应的IP地址
+			garp_master_delay 10 #在切换到MASTER状态后延时进行Gratuitous arp请求的时间
+			
+			track_interface{ #设置一些额外的网络监控接口，其中任何一个网络接口出现故障，keepalived都会进入FAULT状态
+				eth0
+				eth1
+			}
+			或者
+			vrrp_script check_httpd{
+				script "killall -0 httpd"
+				interval 2
+			}
+			track_script{
+				check_httpd
+			}
+			
+			authentication{ #设定节点间通信验证类型和密码，验证类型主要有PASS和AH两种，在一个vrrp_instance下，MASTER和BACKUP必须使用相同的密码才能正常通信
+				auth_type PASS
+				auth_pass qwaszx
+			}
+			
+			virtual_ipaddress{ #虚拟IP，MASTER切换时，通过ip address add命令添加vip
+				#<IPADDR>/<MASK> brd <IPADDR> dev <STRING> scope <SCOPT> label <LABEL>
+				192.168.200.16
+				192.168.200.17 dev eth1
+				192.168.200.18 dev eth2
+			}
+			
+			virtual_routes{ #类似vip，MASTER切换时，设置路由信息
+				#src <IPADDR> [to] <IPADDR>/<MASK> via|gw <IPADDR> dev <STRING> scope <SCOPE>
+				src 192.168.100.1 to 192.168.109.0/24 via 192.168.200.254 dev eth1
+				192.168.110.0/24 via 192.168.200.254 dev eth1
+				192.168.111.0/24 dev eth2
+				192.168.112.0/24 via 192.168.100.254
+				192.168.113.0/24 via 192.168.100.252 or 192.168.100.253
+			}
+			
+			nopreempt #高可用集群中的不枪占功能，down掉再恢复后，不会抢回MASTER状态，保持服务稳定；
+			preemtp_delay 300 #抢占的延时时间
+		}
+	
+	LVS配置；
+		分real_server和健康检测段；
+		
+		virtual_server 192.168.12.200 80{ #虚拟服务器
+			delay_loop 6 #健康检测的时间间隔
+			lb_algo rr #负载调度算法：rr、wrr、lc、wlc、lblc、sh、dh等;
+			lb_kind DR #负载均衡的机制，有NAT、TUN、DR三个模式；
+			persistence_timeout 50 #会话保持时间，单位是秒；
+			persistence_granularity <NETMASK> #配合persistence_timeout使用
+			protocol TCP #转发协议类型，分TCP和UDP；
+			ha_suspend #节点状态从MASTER到BACKUP切换时，暂不启用real server节点的健康检查；
+			virtualhost <string> #在通过HTTP_GET/SSL_GET做健康检测时，指定的web服务器的虚拟主机地址；
+			sorry_server <IPADDR> <PORT> #相当于一个备用节点，在所有real server失效后，这个备用节点会启用；
+		}
+		
+		real_server 192.168.12.132 80{ #真实的ip地址和接口
+			weight 3 #权重
+			inhibit_on_failure #在检测到real server节点失效后，把它的weight值设为0，而不是从IPVS中删除；
+			notify_up <STRING> | <QUOTED-STRING> #up状态切换时执行相应的脚本
+			notify_down <STRING> | <QUOTED-STRING> #down状态切换时执行相应的脚本
+		}
+		
+		健康检测段允许多种检查方式，常见的有HTTP_GET、SSL_GET、TCP_CHECK、SMTP_CHECK、MISC_CHECK；
+		
+		TCP_CHECK{
+			connect_port 80 #健康检测的端口，默认为real server指定的端口
+			connect_timeout 3 #无响应超时时间，单位为秒；
+			nb_get_retry 3 #重试次数
+			delay_before_retry 3 #重试间隔，单位为秒
+		}
+		
+		HTTP_GET|SSL_GET{
+			url{
+				path /index.html #检测url，可以指定多个
+				digest e6c... #SSL检查后的摘要信息
+				status_code 200
+			}
+			
+			connect_port 80
+			bindto 192.168.12.80 #通过此地址来发送请求对服务器进行健康检查
+			connect_timeout 3 #无响应超时时间，单位为秒；
+			nb_get_retry 3 #重试次数
+			delay_before_retry 3 #重试间隔，单位为秒
+		}
+		
+		MISC_CHECK{
+			misc_path /usr/local/bin/script.sh #脚本路径，用来判断服务状态
+			misc_timeout 5 #执行脚本的超时时间
+			!misc_dynamic #是否动态调整real server的权重
+		}
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+	
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

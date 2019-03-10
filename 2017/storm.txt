@@ -1,0 +1,207 @@
+
+Topology（拓扑）
+	有向无环图的逻辑计算，业务逻辑放在图的各个节点中；
+	
+Stream（流）
+	流是一个无界Tuple序列；Tuple（元组）;
+	
+Spout
+	Spout是Topology流的来源，可分为可靠、不可靠两种模式；
+	
+Bolt
+	Topology中所有的业务逻辑处理都在Bolt中完成；包括过滤、业务处理、连接运算、访问db等业务；
+	
+Worker（工作进程）
+	Topology跨一个或多个Worker节点的进程执行，每个Worker节点的进程是一个物理的JVM和Topology执行所有任务的一个子集；
+	Worker是Spout/Bolt中运行具体逻辑的进程。拓扑跨一个或多个Worker进程执行。每个Worker进程是一个物理的JVM和拓扑执行
+	所有任务的一个子集。例如，如果合并并行度的拓扑是300，已经分配50个Worker，然后每个Worker将执行6个任务（作为在Worker内的线程）。
+	Storm尝试在所有Worker上均匀地发布任务；
+	
+Task（任务）
+	每个Spout、Bolt在集群执行许多任务，每个任务对应一个线程的执行；
+	
+Executor（执行器）
+	在Storm 0.8以后，Task不再与物理线程对应，同一个Spout/Bolt的Task可能会共享一个物理线程，该线程称为执行器（Executor）；
+
+storm集群分为主控节点/工作节点，主控节点只有1个，工作节点可以有多个；
+	主控节点运行一个称为Nimbus的守护进程，类似于Hadoop的JobTracker。Nimbus负责在集群中分发代码，对节点分配任务，并监视主机故障。
+	每个工作节点运行一个称为Supervisor的守护进程。Supervisor监听其主机上已经分配的主机的作业，启动和停止Nimbus已经分配的工作进程；
+	
+可靠性（Reliability）
+	Storm保证每一个Spout元组将被拓扑完全可靠地处理。它跟踪每个Spout元组的元组树，检测树中的元组什么时候可以成功完成。每个拓扑都有
+	“消息超时时间”，如果Storm在超时之前未能检测到Spout元组完成，那么会设元组为失败并在之后重新发射它；
+	
+序列化：Kryo
+
+Storm可靠性机制——保证消息处理？？？？
+	Storm会负责跟踪创建的消息树，如果Storm检测到一个元组是完全处理的，Storm将调用原Spout任务的ack()方法，把Spout提供给Storm的消息id
+	作为输入参数；
+	
+	Storm拓扑有一组特殊的Acker任务，对于每一个Spout元组，跟踪元组的有向无环图。
+	
+	当元组在Spout或Bolt中被创建，它是给定一个随机抽取的64位id，这些id被Acker用来对每一个Spout元组跟踪元组的有向无环图。
+	每一个元组都知道所有Spout元组的id（因为它在元组树中存在）。当你在一个Bolt发射一个新的元组时，来自元组的锚的Spout元组的id都复制到
+	新的tuple。当一个元组是acked时，它发射一个消息以及关于为什么元组树被改变的信息到相应的Acker任务，特别它告诉Acker“我现在在这个
+	Spout元组的元组树里完成了，而在树上的新的元组被锚定到我这里”。
+	
+	在一个Topology里可以拥有任意数量的Acker任务，这导致了一下问题：当一个元组在Topology里面是acked时，它如何知道向哪一个Acker任务发送
+	这些信息的呢？Storm使用取模哈希映射一个Spout元组id到一个Acker任务。由于知道每一个元组与其存在于所有树的Spout的元组的id，它们知道
+	该与哪些Acker任务沟通。
+	
+	Storm的另一个细节是Acker任务如何追踪了解哪个Spout任务是负责它们跟踪的Spout元组：当一个Spout任务发送一个新的元组时，它只是将消息
+	发送给适当的Acker，告知其任务id负责Spout元组；然后当一个Acker看到一棵树已经完成时，它知道发送完成消息到哪个任务id；
+	
+	Acker任务不显示跟踪元组树。对于大量的元组树与成千上万的节点，跟踪所有的元组树可能会超过Acker所使用的内存容量。相反，Acker采取不同
+	的策略，只需要每个Spout元组一个固定的空间量（约20个字节），这种跟踪算法是Storm如何工作的关键，这是Storm的一个重大突破。
+	
+	一个Acker任务存储来自Spout元组id的map的一对值。第一个值是创建Spout元组的任务id，用于稍后发送完成消息。第二个值是一个64位的值，称为ack val。
+	ack val是整个元组树的表示状态，不管多大多小；它仅仅是所有元组id的XOR，已经在树上被创建和/或acked。
+	
+	当一个Acker任务看到ack val已经为0，它就知道元组树已经完成了。因为元组id是随机的64位数字，ack val意外地成为0的可能性非常小。
+	
+XOR算法
+	如果a、b两个值不相同，则异或结果为1。如果a、b两个值相同，异或结果为0。
+	
+消息传输机制：ZeroMQ/Netty
+
+拓扑详解
+	TopologyBuilder
+	
+分组方式
+	1、shuffle Grouping（随机分组），保证每个任务得到相同数量的元组；
+	
+	2、Fields Grouping（字段分组），相同字段的元组被分发到相同的任务；
+	
+	3、All Grouping（广播分组），流被发送到所有Bolt的任务中。
+	
+	4、Global Grouping（全局分组），全部流都发送到Bolt的同一个任务中，再具体一点，是发送给ID最小的任务；
+	
+	5、无分组，和随机分组效果一样，不同的是storm会把这个Bolt放到Bolt的订阅者的同一个线程中执行。
+	
+	6、Direct Grouping（直接分组），是一种特殊的分组。这种方式的流分组意味着由元组的生产者决定元组的消费者的接收元组的任务。
+	
+	7、本地或者随机分组：如果目标Bolt在同一个工作进程存在一个或多个任务，元组会随机分配给这些任务。否则，该分组方式和随机分组方式是一样的。
+	
+	8、部分关键字分组：与字段分组相似，根据定义的字段来对数据流进行分组。不同的是，这种分组方式会考虑下游Bolt数据处理的均衡性问题，在
+		输入数据源关键字不平衡时，会有更好的性能。
+		
+	9、自定义分组：实现接口CustomStreamGrouping；
+	
+拓扑常见的模式
+	1、流连接；
+	2、批处理；
+	3、BasicBolt；
+	4、内存中缓存与字段的组合；
+	5、计算topN；
+	6、高效保存最近更新对象缓存的TimeCacheMap；
+	7、分布式RPC的CoordinatedBolt与KeyedFairBolt；
+	
+ISpout
+	open()：在该组件的一个任务在集群的工作进程内被初始化时调用。
+	
+	close()：当一个ISpout即将关闭时被调用，不能保证close()一定被调用，比如kill -9；
+	
+	activate()：当Spout已经从失效模式中激活时被调用。该Spout的nextTuple()方法很快就会被调用。当使用Storm客户端操作拓扑时，
+		Spout可以在失效之后变成激活模式；
+		
+	deactivate()：当Spout已经失效时被调用。在Spout失效期间，nextTuple不会被调用。Spout将来可能会也可能不会被重新激活。
+	
+	nextTuple()：当调用nextTupe()方法时，Storm要求Spout发射元组到输出收集器(OutputCollector)。nextTuple()方法应该是非阻塞的，所以
+		如果Spout没有元组可以发射，改方法应该返回。nextTuple()、ack()、fail()方法都在Spout任务的单一线程内紧密循环被调用。
+		当没有元组可以发射时，可以让nextTuple去sleep很短的时间，例如1毫秒，这样就不会浪费太多的CPU资源。
+		
+	ack()：Storm已经断定该Spout发射的标识符为msgId的元组已经被完全处理时，会调用ack方法。通常情况下，ack()方法会将该消息一出队列
+		以防止它被重发；
+		
+	fail()：该Spout发射的标识符为msgId的元组未能被完全处理时，会调用fail()方法。通常情况下，fail方法会将消息放回队列中，并在稍后重发消息。
+	
+IBolt
+	prepare()：在该组件的一个任务在集群的工作进程内被初始化时被调用，提供了Bolt执行所需要的环境。
+	
+	execute()：处理一个输入元组，并在最后用prepare方法提供的OutputCollector进行发射。
+	
+	cleanup()：当一个IBolt即将关闭时被调用，kill -9时不会被调用。
+	
+事务接口？？？？？？？P92
+
+第5章：Spout
+
+消息的可靠性：collector.emit(new Values(...), tupleId)
+	为了管理Spout的可靠性，可以在发射元组的时候，在元组里面包含一个消息ID；当元组处理成功时调用ack()，当元组处理失败时调用fail()方法。
+	当元组被所有的目标Bolt和所有的锚定Bolt所处理时，认为元组处理成功。
+
+	public class MySpout extends BaseRichSpout{
+		
+		public void declareOutputFields(OutputFieldsDeclarer declarer){}
+		
+		public void open(Map conf, TopologyContext context, SpoutOutputCollector collector){}
+		
+		public void nextTuple(){}
+	}
+	
+第6章：Bolt
+	public class SplitSentence implements IRichBolt{
+		private OutputCollector collector;
+		
+		public void prepare(Map conf, TopologyContext context, OutputCollector collector){
+			this.collector = collector;
+		}
+		
+		public void execute(Tuple tuple){
+			String sentence = tuple.getString(0);
+			
+			for(String word: sentence.split(" ")){
+				collector.emit(new Values(word)); //未保证消息处理
+				//collector.emit(tuple, new Values(word));
+			}
+			
+			//collector.ack(tuple);
+		}
+		
+		public void cleanup(){}
+		
+		public void declareOutputFields(OutputFieldsDeclarer declarer){
+			declarer.ceclare(new Fields("word"));
+		}
+	}
+	
+BaseBasicBolt：可靠的自动确认；
+BaseRichBolt：不可靠；
+	
+第16章：事务拓扑
+	
+事务拓扑（Transactional Topology）是Storm 0.7引入的特性，在0.8版本中已经被封装为Trident，提供了更加便利和直观的接口。
+	为了实现如转账等严格要求的场景，Storm的事务拓扑是完全基于它底层的Spout/Bolt/Acker原语实现的。
+	事务拓扑简单来说就是将元组分为一个个的Batch，同一Batch内的元组以及Batch与Batch之间的元组可以并行处理，另一方面，
+	用户可以设置某些Bolt为Commiter，Storm可以保证Committer的finishBatch()操作按严格不降序的顺序执行。用户可以利用
+	这个特性简单的编程技巧实现消息处理的精确性。
+	
+	事务拓扑的核心是保证数据处理的严格有序。
+	
+Storm把Batch的处理分为两个阶段
+	1、处理阶段，可以并行处理Batch；
+	2、提交阶段，Batch之间是严格有序的；
+	
+事务Spout：TransactionalSpout；
+事务builder：TransactionalTopologyBuilder；
+事务Bolt：BaseTransactionalBolt；
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

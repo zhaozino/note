@@ -1,0 +1,535 @@
+
+Netty
+
+*****************************************************************************************************************************************
+	
+linux网络I/O模型
+	1、阻塞I/O模型：在进程空间中调用recvfrom方法，直到数据包到达且被复制到应用进程的缓冲区中或者发生错误时才返回，在此期间会一直阻塞等待；
+	2、非阻塞I/O模型：在进程空间中调用recvfrom方法，如果缓冲区没有数据的话，就返回一个EWOULDBLOCK错误，
+		一般通过轮询来检查这个状态，看内核是否有数据到来；
+	3、I/O复用模型：进程将多个fd(文件描述符)传递给select/poll(由linux提供)系统调用，以帧测fd是否处于就绪状态，阻塞在select操作上；
+		缺点：select/poll是顺序扫描fd是否就绪，而且支持的fd数量有限；
+		linux还提供了一个epoll系统调用，epoll使用基于事件驱动方式代替顺序扫描，当有fd就绪时，立即回调函数rollback，因此性能更高。
+	4、信号驱动I/O模型：首先开启套接口信号驱动I/O功能，并通过系统调用sigaction执行一个信号处理函数（此系统调用非阻塞，立即返回）。
+		当数据准备就绪时，就为该进程生成一个sigio信号，通过信号回调通知应用程序调用recvfrom来读取数据，并通知主循环函数处理数据；
+	5、异步I/O：应用进程通知内核开始一个异步I/O操作，并让内核在整个操作完成后（包括将数据从内核复制到用户自己的缓冲区）通知应用进程；
+		信号驱动I/O由内核通知我们何时可以开始一个I/O操作；异步I/O模型由内核通知我们I/O操作何时已经完成；
+
+I/O多路复用：当需要同时处理多个客户端接入请求时，利用I/O多路复用，把多个I/O的阻塞复用到同一个select的阻塞上，
+	从而使系统在单线程的情况下可以同时处理多个客户端请求。与传统的多线程多进程模型相比，I/O多路复用系统开销小，可维护性好；
+	
+	目前支持I/O多路复用的系统调用有select、pselect、poll、epoll；
+	epool支持一个进程打开的socket描述符（FD）不受限制（仅受限于操作系统的最大文件句柄数，可以通过cat /proc/sys/fs/file-max查看）；
+		 IO效率不会随着FD数目的增加而线性下降
+	
+*****************************************************************************************************************************************
+		 
+讲述下java BIO、NIO、AIO网络编程模型；
+	BIO服务端：
+		
+		代码示例：
+			ServerSocket serverSock = new ServerSocket();
+			serverSocket.bind(new InetSocketAddress(8888));
+			Socket clientSock = serverSock.accept();
+			InputStream in = clientSock.getInputStream();
+			OutputStream out = clientSock.getOutputStream();	
+			clntSock.close(); 
+			serverSocket.close();
+			
+	BIO客户端：
+		
+		代码示例：
+			Socket socket = new Socket(ip, servPort); 
+			InputStream in = socket.getInputStream();  
+			OutputStream out = socket.getOutputStream();
+			socket.close();
+		
+	NIO模型：Channel、Selector、Buffer
+		通道Channel：网络数据通过Channel进行读写，Channel是全双工的，可以同时读写；
+		多路复用器Selector：selector会不断地轮询注册其上的Channel，筛选出就绪状态的Channel，
+			通过SelectionKey可以获取就绪状态的Channel，进行I/O操作；
+		缓冲区Buffer：在NIO库中，所有的数据都是用缓冲区处理的，byteBuffer、IntBuffer；
+			ByteBuffer内部字段：
+				byte[] buff：内部用于缓存的数组；
+				position：当前读取的位置；
+				mark：为某一读过的位置做标记，便于某些时候回退到该位置；
+				capacity：初始化时候的容量；
+				limit：读写的上限，limit<=capacity；
+			ByteBuffer内部方法：
+				ByteBuffer.allocate(1024);分配ByteBuf
+				put：写模式下，往buffer里写一个字节，并把postion移动一位。写模式下，一般limit与capacity相等；
+				get：从buffer里读一个字节，并把postion移动一位。上限是limit，即写入数据的最后位置；
+				flip：写完数据，需要开始读的时候，将limit=postion，postion=0，mark=-1；
+				rewind：position=0，mark=-1，其他不变；
+				clear：position=0，limit=capacity，mark=-1，并不清除buffer内容。
+				mark：标记当前位置；reset：返回标记的位置；
+			
+			ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+			while(inChannel.read(byteBuffer) != -1){
+				buffer.flip();
+				outChannel.write(byteBuffer);
+				byteBuffer.clear();
+			}
+			
+	NIO服务端：
+		ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+		serverSocketChannel.configureBlocking(false);
+		
+		ServerSocket serverSocket = serverSocketChannel.socket();
+		serverSocket.bind(new InetSocketAddress(port));
+		
+		Selector selector = Selector.open();
+		serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+		
+		while(true){
+			selector.select(); //会阻塞
+			
+			Set<SelectionKey> readyKeys = selector.selectedKeys();
+			Iterator<SelectionKey> iterator = readyKeys.iterator();
+			
+			while(iterator.hasNext()){
+				SelectionKey key = iterator.next();
+				iterator.remove();
+				if(key.isAcceptable()){
+					ServerSocketChannel server = (ServerSocketChannel)key.channel();
+					SocketChannel client = server.accept();
+					client.configureBlocking(false);
+					
+					SelectionKey key2 = client.register(selector, SelectionKey.OP_WRITE);
+					ByteBuffer buffer = ByteBuffer.allocate(74);
+					buffer.put(rotation, 0, 72);
+					buffer.put((byte)'\r');
+					buffer.put((byte)'\n');
+					buffer.flip();
+					key2.attach(buffer);
+				}else if(key.isWritable()){
+					SocketChannel client = (SocketChannel)key.channel();
+					ByteBuffer buffer = (ByteBuffer)key.attachment();
+					if(!buffer.hasRemaining()){
+						buffer.rewind();
+						buffer.put(rotation, position, 72);
+						buffer.put((byte)'\r');
+						buffer.put((byte)'\n');
+						buffer.flip();
+					}
+					client.write(buffer);
+				}
+				key.cancel();
+				key.channel().close();
+			}
+		}
+		
+	NIO客户端：
+		
+		SocketAddress address = new InetSocketAddress(ip, port);
+		
+		SocketChannel socketChannel = SocketChannel.open();
+		socketChannel.configureBlocking(false);
+		
+		if(socketChannel.connect(address)){
+			socketChannel.register(selector, SelectionKey.OP_READ);
+			ByteBuffer buffer = ByteBuffer.allocate(74);
+			buffer.put(data);
+			buffer.flip();
+			socketChannel.write(buffer);
+		}else{
+			socketChannel.register(selector, SelectionKey.OP_CONNECT);
+		}
+		
+		while(true){
+			selector.select();
+			
+			Set<SelectionKey> readyKeys = selector.selectedKeys();
+			Iterator<SelectionKey> iterator = readyKeys.iterator();
+			
+			while(iterator.hasNext()){
+				SelectionKey key = iterator.next();
+				iterator.remove();
+				if(key.isValid()){
+					SocketChannel sc = (SocketChannel)key.channel();
+					if(key.isConnectable()){
+						if(sc.finishConnect()){
+							sc.register(selector, SelectionKey.OP_READ);
+							ByteBuffer buffer = ByteBuffer.allocate(74);
+							buffer.put(data);
+							buffer.flip();
+							socketChannel.write(buffer);
+						}else{
+							logger.info("连接失败")
+						}
+					}
+					if(key.isReadable()){
+						ByteBuffer buffer = ByteBuffer.allocate(74);
+						int num = sc.read(buffer);
+						if(num>0){
+							buffer.flip();
+							byte[] bytes = new byte[buffer.remaining()];
+							buffer.get(bytes);
+							String data = new String(bytes, "utf-8");
+						}else{
+							key.cancel();
+							key.channel().close();
+						}
+					}
+				}
+			}
+		}
+		
+		
+	AIO模型
+		NIO2.0引入了新的异步通道概念，并提供了异步文件通道和异步套接字通道的实现，对应于UNIX网络编程中的事件驱动I/O，不需要selector；
+		异步通道提供以下两种方式获取操作结果；
+		1、通过Future类来表示异步操作的结果；
+		2、在异步操作的时候传入一个channels；
+		
+	AIO服务端：
+		1、创建异步服务通道，绑定端口；
+		2、接收客户端的连接；
+		3、连接处理；
+		4、处理读写操作；
+		5、释放资源；
+		
+		代码示例：
+			MyServerHandler implements Runnable{
+				AsynchronousServerSocketChannel channel = AsynchronousServerSocketChannel.open();
+				channel.bind(new InetSocketAddress(port));
+				channel.accept(this, new MyAcceptCompletionHandler());
+			}
+			
+			public class MyAcceptCompletionHandler implements CompletionHandler<AsynchronousSocketChannel, MyServerHandler>{
+				public void completed(AsynchronousSocketChannel channel, MyServerHandler handler){
+					//每当接收一个客户端连接成功之后，再异步接收新的客户端连接，accept是异步方法，不会阻塞；
+					handler.channel.accept(this, new MyServerHandler());
+					ByteBuffer buffer = ByteBuffer.allocate(1024);
+					channel.read(buffer, buffer, new MyReadCompletionHandler(channel));
+				}
+				
+				public void failed(Throwable exc, MyServerHandler handler){}
+			}
+			
+			public class MyReadCompletionHandler implements CompletionHandler<Integer, ByteBuffer>{
+				public void completed(Integer int, ByteBuffer byteBuffer){
+					//处理byteBuffer内容；
+					byte[] body = new byte[byteBuffer.remaining()];
+					byteBuffer.get(body);
+					System.out.println(new String(body, "utf-8"));
+					
+					//写内容
+					ByteBuffer buffer = ByteBuffer.allocate(74);
+					buffer.put(rotation, 0, 72);
+					buffer.flip();
+					channel.write(buffer, buffer, new MyWriteCompletionHandler(channel));
+				}
+				
+				public void failed(Throwable exc, ByteBuffer buffer){}
+			}
+			
+			public class MyWriteCompletionHandler implements CompletionHandler<Integer, ByteBuffer>{
+				public void completed(Integer int, ByteBuffer buffer){
+					if(buffer.hasRemaining()){
+						channel.write(buffer, buffer, this);
+					}
+				}
+				
+				public void failed(Throwable exc, ByteBuffer buffer){}
+			}
+			
+			channel.close();
+			
+	AIO客户端：
+		1、线程初始化；
+			new Thread(new MyClientHandler("ip", port)).start();
+		2、public class MyClientHandler implements CompletionHandler<Void, MyClientHandler>, Runnable{
+				AsynchronousSocketChannel channel = AsynchronousSocketChannel.open();
+				
+				channel.connect(address, this, this);
+				
+				public void completed(void rs, MyClientHandler handler){
+					channel.write(buffer, buffer, new MyCompletionHandler<Integer, ByteBuffer>(this));
+				}
+			}
+			
+		3、channel.close();
+		
+讲述下Netty的网络编程模型；
+Netty重要概念：ByteBuf、Channel/Unsafe、ChannelPipeline、NioEventLoop、Future
+	ByteBuf属性：readerIndex、writerIndex；
+	ByteBuf方法：
+		discardReadBytes方法会释放掉已读的byte空间，增加到可读空间；
+			缓冲区的分配和释放是个耗时的操作，因此我们要尽量重用它们；
+		markReaderIndex、markWriterIndex、resetReaderIndex、resetWriterIndex;
+		Unpooled.buffer(1000);//分配ByteBuf
+	
+	ByteBuf有heapByteBuf堆内存、DirectByteBuf直接内存；
+	
+	Channel：网络的读写、客户端发起连接、主动关闭连接、链路关闭、获取通信双方的网络地址；
+		ServerSocketChannel、SocketChannel；
+		当Channel进行I/O操作时，会产生对应的I/O事件，然后驱动事件在ChannelPipeline中传播，
+			由对应的ChannelHandler对事件进行拦截和处理；网络I/O操作直接调用DefaultChannelPipeline的
+			相关方法，由DefaultChannelPipeline中对应的ChannelHandler进行具体的逻辑处理；
+	Unsafe：实际的网络I/O操作基本都是由Unsafe功能类负责实现的，是channel接口的辅助接口，不应该被用户调用；
+	ChannelPipeline/ChaninnelHandler：ChannelPipeline是ChannelHandler的容器，负责ChannelHandler的管理和事件的拦截与调度；类似于servlet/filter，职责链；
+	EventLoop：NioEventLoop并不是一个纯粹的I/O线程，除了负责I/O的读写外，还负责系统task、定时任务；
+	Future：可以异步地获取结果；
+	Promise：对Future的扩展，是可写的Future；
+	
+	ByteBuf byteBuf = Unpooled.buffer(1024);
+	while(inChannel.read(byteBuf) != -1){
+		outChannel.write(byteBuf);
+		byteBuf.clear();
+	}
+	
+Netty服务端：
+	
+	EventLoopGroup bossGroup = new NioEventLoopGroup(); //用于客户端连接
+	EventLoopGroup workerGroup = new NioEventLoopGroup(); //用于SocketChannel的网络读写
+	
+	ServerBootstrap b = new ServerBootstrap();
+	b.group(bossGroup, workerGroup)
+		.channel(NioServerSocketChannel.class)
+		.option(ChannelOption.SO_BACKLOG, 1024)//TCP参数
+		.childHandler(new ChannelInitializer<SocketChannel>(){
+				@Override
+				protected void initChannel(SocketChannel socketChannel) throws Exception {
+					socketChannel.pipeline().addLast(new LineBasedFrameDecoder(1024));//拆包、粘包；
+					socketChannel.pipeline().addLast(new StringDecoder());//将接收到的对象转换成字符串，序列化；
+					socketChannel.pipeline().addLast(new TimeServerHandler());
+				}
+		});
+	
+	ChannelFuture f = b.bind(port).sync();
+	
+	f.channel().closeFuture().sync(); //等待服务端监听端口关闭；
+	
+	bossGroup.shutdownGracefully(); //优雅退出，释放线程池资源；
+	workerGroup.shutdownGracefully();
+	
+	TimeServerHandler；
+		public class TimeServerHandler extends ChannelHandlerAdapter implements ChannelHandler {
+			
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+				ByteBuf buf = (ByteBuf)msg;
+				byte[] req = new byte[buf.readableBytes()];
+				buf.readBytes(req);
+				String body = new String(req, "UTF-8");
+				String currentTime = "QUERY TIME ORDER".equalsIgnoreCase(body)?((new Date()).toString()):"BAD ORDER";
+				ByteBuf resp = Unpooled.copiedBuffer(currentTime.getBytes());
+				ctx.write(resp);
+			}
+			
+			@Override
+			public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+				ctx.flush();
+			}
+			
+			@Override
+			public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+				ctx.close();
+			}
+			
+Netty客户端：
+	1、配置服务端的NIO线程组;
+		EventLoopGroup group = new NioEventLoopGroup();
+	2、创建启动NIO客户端的辅助启动类，用于降低客户端的开发复杂度；
+		Bootstrap b = new Bootstrap();
+		b.group(group)
+			.channel(NioSocketChannel.class)
+			.option(ChannelOption.TCP_NODELAY, true)
+			.handler(new ChannelInitializer<SocketChannel>(){
+				@Override
+				protected void initChannel(SocketChannel socketChannel) throws Exception {
+					socketChannel.pipeline().addLast(new LineBasedFrameDecoder(1024));//拆包、粘包；
+					socketChannel.pipeline().addLast(new StringDecoder());//将接收到的对象转换成字符串，序列化；
+					socketChannel.pipeline().addLast(new TimeClientHandler());
+				}
+			})
+			
+	3、TimeClientHandler
+		public class TimeClientHandler extends ChannelHandlerAdapter implements ChannelHandler {
+			
+			private byte[] req;
+			
+			public TimeClientHandler(){
+				req = ("QUERY TIME ORDER").getBytes();
+			}
+			
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) throws Exception {
+				ByteBuf message = null;
+				for(int i=0; i<100; i++){
+					message = Unpooled.buffer();
+					message.writeBytes(req);
+					ctx.writeAndFlush(message);
+				}
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+				ByteBuf buf = (ByteBuf)msg;
+				byte[] req = new byte[buf.readableBytes()];
+				buf.readBytes(req);
+				String body = new String(req, "UTF-8");
+				System.out.println(body + "; count = "+count);
+			}
+			
+			@Override
+			public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+				ctx.close();
+			}
+		}
+		
+讲述下Netty的原理及常用的类；
+拆包/粘包：
+	拆包、粘包原因：write写入的字节大小大于套接口发送缓冲区大小；进行MSS大小的TCP分段；以太网帧的payload大于MTU进行IP分片；
+	粘包问题的解决策略：1、消息定长；2、回车换行符；3、消息头中包含消息体的长度；4、其他；
+	Netty解决类：LineBasedFrameDecoder、DelimiterBasedFrameDecoder(分隔符)、FixedLengthFrameDecoder(定长)、
+		LengthFieldPrepender(在byteBuf之前增加2个字节的消息长度字段)/LengthFieldBasedFrameDecoder(根据前边的消息长度，进行半包处理);
+
+序列化MessagePack
+	//编码器
+	public class MyMsgpackEncoder extends MessageToByteEncoder<Object>{
+		@Override
+		protected void encode(ChannelHandlerContext context, Object obj, ByteBuf byteBuf)throws Exception{
+			MessagePack messagePack = new MessagePack();
+			byte[] raw = msgpack.write(obj);
+			byteBuf.writeBytes(raw);
+		}
+	}
+	
+	//解码器
+	public class MyMsgpackDecoder extends MessageToMessageDecoder<ByteBuf>{
+		@Override
+		protected void decode(ChannelHandlerContext context, ByteBuf byteBuf, List<Object> list)throws Exception{
+			final byte[] array;
+			final int length = byteBuf.readableByes();
+			array = new byte[length];
+			byteBuf.getBytes(byteBuf.readerIndex(), array, 0, length);
+			MessagePack messagePack = new MessagePack();
+			list.add(messagePack.read(array));
+		}
+	}
+	
+	添加到服务器端/客户端
+	socketChannel.pipeline().addLast("desc", new MyMsgpackDecoder());
+	socketChannel.pipeline().addLast("desc", new MyMsgpackEncoder());
+	socketChannel.pipeline().addLast("desc", new LengthFieldPrepender(2));//在byteBuf之前增加2个字节的消息长度字段
+	socketChannel.pipeline().addLast("desc", new LengthFieldBasedFrameDecoder(65535, 0, 2, 0, 2));//根据前边的消息长度，进行半包处理
+	
+讲述下Netty在框架及项目中的应用；
+	dubbo、rpc、im；
+	
+私有协议设计
+	1、序列化messagePack；
+	2、拆包粘包；
+	3、心跳；
+	4、登录校验；
+	5、断链重连；
+	
+	header：crc、length、type、priority、sid、attachment;
+	
+私有协议
+	1、序列化MessagePack；
+	2、白名单、黑名单；
+	3、链路的有效性校验机制；
+	4、链路的断连重连。
+	
+	通信模型
+	双方之间的心跳采用Ping-Pong机制，当链路处于空闲状态时，客户端主动发送Ping消息给服务端，
+	服务端收到Ping消息后发送应答消息Pong给客户端，如果客户端连续发送N条Ping消息都没有收到服务
+	端返回的Pong消息，说明链路已经挂死或者对方处于异常状态，客户端主动关闭连接，间隔周期T后发起
+	重连操作，直到重连成功；
+	
+	Netty消息定义：header + body
+	
+	header：
+		crcCode：int，消息校验码；
+		length：int，消息长度，包括消息头和消息体；
+		sessionID：long，会话ID，保持全局唯一；
+		type：byte，消息类型，包括，业务请求消息、业务响应消息、握手请求消息、握手应答消息、心跳请求消息、心跳应答消息、业务ONE WAY消息（即是请求又是响应消息）；
+		priority：byte，消息优先级；
+		attachment：map，扩展字段；
+		
+	body：Object，...
+	
+	由于采用长连接通信，在正常的业务运行期间，双方通过心跳和业务消息维持链路，任何一方都不需要主动关闭连接；
+	但是，在以下情况下，客户端和服务端需要关闭连接：
+	1、当对方宕机或重启时；
+	2、发生读写消息的I/O异常；
+	3、心跳超时；
+	4、编码异常等不可恢复错误；
+	
+	可靠性设计
+		1、心跳机制：
+			在凌晨等业务低谷期时段，如果发生网络闪断、连接被Hang住等网络问题时，由于没有业务消息，
+			应用进程很难发现。到了白天业务高峰期时，会发生大量的网络通信失败，严重的会导致一段时间进程内无法
+			处理业务消息。为了解决这个问题，在网络空闲时采用心跳机制来检测链路的互通性，一旦发现网络故障，
+			立即关闭链路，主动重连；
+			
+			具体设计思路
+			1、当网络处于空闲状态持续时间达到T（连续周期T没有读写消息）时，客户端主动发送Ping心跳消息给服务端；
+			2、如果在下一个周期T到来时客户端没有收到对方发送的Pong心跳应答消息或没有读取到服务端发送的其他业务
+				消息，则心跳失败计数器加1；
+			3、每当客户端接收到服务的业务消息或者Pong应答消息，将心跳失败计数器清零；当连续N次没有收到服务端的
+				Pong消息或者业务消息，则关闭链路，间隔INTERVAL时间后发起重连操作；
+			4、服务端网络空闲状态持续时间到达T后，服务端将心跳失败计数器加1；只要接收到客户端发送的Ping消息或者
+				其他业务消息，计数器清零；
+			5、服务端连续N次没有接收到客户端的Ping消息或者其他业务消息，则关闭链路，释放资源，等待客户重连；
+			6、为防止误判，只有连续N次心跳检测失败才人定链路已经损害，需要关闭链路重连；
+			7、当读或写心跳消息发生I/O异常的时候，说明链路已经中断，此时需要立即关闭链路，如果是客户端，需要重新
+				发起连接。如果是服务端，需要清空缓存的半包信息，等待客户端重连；
+				
+		2、重连机制
+			如果链路中断，等待INTERVAL时间后，由客户端发起重连操作，如果重连失败，间隔周期INTERVAL后再次发起重连，
+				直到重连成功；
+			为了保证服务端能够有充足的时间释放句柄资源，在首次断连时客户端需要等待INTERVAL时间之后再发起重连，而不是
+				失败后就立即重连；
+			为了保证句柄资源能够及时释放，无论什么场景下的重连失败，客户端都必须保证自身的资源被及时释放，包括但不限
+				SocketChannel、Socket等；
+			重连失败后，要打印异常堆栈信息，方便后续的问题定位；
+			
+		3、重复登录保护
+			当客户端握手成功之后，在链路处于正常状态下，不允许客户端重复登录，以防止客户端在异常状态下反复重连
+				导致句柄资源被耗尽；
+			服务端接收到客户端的握手请求消息后，首先对IP地址进行合法性检验，如果校验成功，在缓存的地址表中查看
+				客户端是否已经登录，如果已经登录，则拒绝重复登录，返回错误吗-1，同时关闭TCP链路，并在服务端的
+				日志中打印握手失败的原因；
+			客户端接收到握手失败的应答消息后，关闭客户端的TCP连接，等待INTERVAL时间后，再次发起TCP连接，直到认证成功；
+			
+			
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

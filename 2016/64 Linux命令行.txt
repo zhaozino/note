@@ -1,0 +1,389 @@
+
+***********************************************************************
+
+shell编程
+
+  #!/bin/sh  --开头shell的声明
+  #comments  --#注释
+  一行是一条命令，如果一行放不下，用逗号隔开，表明下一行也属于这一行的；
+  
+  hello world例子：
+	#!/bin/sh
+	#print hello world in the console window
+	a = "hello world"
+	echo "Hi, $a"
+
+常用的linux命令：
+	ls、cd、mkdir、rm、less、cp、mv、tail、top、ip a、tar、ps、chown、chmod、kill
+	
+  复杂的例子
+	#!/bin/bash
+	# we have less than 3 arguments. Print the help text:
+	if [ $# -lt 3 ]; then
+	cat<<HELP
+	      ren -- renames a number of files using sed regular expressions
+	 
+	      USAGE: ren 'regexp' 'replacement' files
+	      EXAMPLE: rename all *.HTM files in *.html:
+	      ren 'HTM$' 'html' *.HTM
+	 
+	HELP
+	     exit 0
+	fi
+	OLD="$1"
+	NEW="$2"
+	# The shift command removes one argument from the list of
+	# command line arguments.
+	shift
+	shift
+	# $* contains now all the files:
+	for file in $*; do
+	if [ -f "$file" ]; then
+	    newfile=`echo "$file" | sed  "s/${OLD}/${NEW}/g"`
+	        if [ -f "$newfile" ]; then
+	            echo "ERROR: $newfile exists already"
+	        else
+	            echo "renaming $file to $newfile "
+	            mv "$file" "$newfile"
+	        fi
+	fi
+	done
+  
+	解释
+		我们从头来看，前面两行上一个例子中已经解释过了，从第三行开始，有新的内容。if语句和其他编程语言相似，都是流程控制语句。它的语法是：
+		if …; then
+
+		…
+
+		elif …; then
+
+		…
+
+		else
+
+		…
+
+		fi
+
+		与其他语言不同，Shell Script中if语句的条件部分要以分号来分隔。第三行中的[]表示条件测试，常用的条件测试有下面几种：
+
+		[ -f "$file" ] 判断$file是否是一个文件
+
+		[ $a -lt 3 ] 判断$a的值是否小于3，同样-gt和-le分别表示大于或小于等于
+
+		[ -x "$file" ] 判断$file是否存在且有可执行权限，同样-r测试文件可读性
+
+		[ -n "$a" ] 判断变量$a是否有值，测试空串用-z
+
+		[ "$a" = "$b" ] 判断$a和$b的取值是否相等
+
+		[ cond1 -a cond2 ] 判断cond1和cond2是否同时成立，-o表示cond1和cond2有一成立
+		要注意条件测试部分中的空格。在方括号的两侧都有空格，在-f、-lt、=等符号两侧同样也有空格。如果没有这些空格，Shell解释脚本的时候就会出错。
+		$#表示包括$0在内的命令行参数的个数。在Shell中，脚本名称本身是$0，剩下的依次是$0、$1、$2…、${10}、${11}，等等。$*表示整个参数列表，不包括$0，
+		也就是说不包括文件名的参数列表。
+		现在我们明白第三行的含义是如果脚本文件的参数少于三个，则执行if和fi语句之间 的内容。然后，从第四行到第十一行之间的内容在Shell Script编程中被称为Here文档，
+		Here文档用于将多行文本传递给某一命令。Here文档的格式是以<<开始，后跟一个字符串，在 Here文档结束的时候，这个字符串同样也要出现，表示文档结束。在本例中，
+		Here文档被输出给cat命令，也即将文档内容打印在屏幕上，起到显示帮助 信息的作用。
+		第十二行的exit是Linux的命令，表示退出当前进程。在Shell脚本中可以使用所有的Linux命令，利用上面的cat和exit，从一方面来说，熟练使用Linux命令也可以大大减少Shell脚本的长度。
+		十四、十五两句是赋值语句，分别将第一和第二参数赋值给变量OLD和NEW。紧接下来的两句是注释，注释下面的两条shift的作用是将参数列表中的第一个和第二个参数删除，
+		后面的参数依次变为新的第一和第二参数，注意参数列表原本也不包括$0。
+		然后，自二十一行到三十一行是一个循环语句。Shell Script中的循环有下面几种格式：
+		while [ cond1 ] && { || } [ cond2 ] …; do
+
+		…
+
+		done
+
+		for var in …; do
+
+		…
+
+		done
+
+		for (( cond1; cond2; cond3 )) do
+
+		…
+
+		done
+
+		until [ cond1 ] && { || } [ cond2 ] …; do
+
+		…
+
+		done
+
+		在上面这些循环中，也可以使用类似C语言中的break和continue语句中断 当前的循环操作。第二十一行的循环是将参数列表中的参数一个一个地放入变量file中。
+		然后进入循环，判断file是否为一个文件，如果是文件的话，则用 sed命令搜索和生成新的文件名。sed基本上可以看成一个查找替换程序，从标准输入，例如管道读入文本，
+		并将结果输出到标准输出，sed使用正则表达式 进行搜索。在第二十三行中，backtick（`）的作用是取出两个backtick之间的命令输出结果，在这里，也就是将结果取出赋给变量 newfile。
+		此后，判断newfile是否已经存在，否则就把file改成newfile。这样我们就明白这个脚本的作用了，Shell Script编写的其他脚本与此相似，只不过是语法和用法稍有不同而已。
+		通过这个例子我们明白了Shell Script的编写规则，但还有几件事情需要讲述一下。
+		第一个，除了if语句之外，Shell Script中也有类似C语言中多分支结构的case语句，它的语法是：
+
+		case var in
+
+		pattern 1 )
+
+		… ;;
+
+		pattern 2 )
+
+		… ;;
+
+		*)
+
+		… ;;
+
+		esac
+
+
+		我们再就下面一个例子，看看case语句的用法。
+
+		while getopts vc: OPTION
+
+		do
+
+		case $OPTION in
+
+		c) COPIES=$OPTARG
+
+			 ehco "$COPIES";;
+
+		v) echo "suyang";;
+
+		\?) exit 1;;
+
+		esac
+
+		done
+
+		上面的getopts类似于C语言提供的函数getopts，在Shell Script中，getopts经常和while语句联合起来使用。getopts的语法如下：
+		getopts option_string variable
+		option_string中包含一串单字符选项，若getopts在命令行参数中 发现了连字符，那么它会将连字符之后的字符与option_string进行比较，若匹配成功，
+		则把变量variable的值设为该选项，若无匹配，则把 变量的值设为？。有时候，选项还会带一个值，例如-c5等，这时要在option_string中该选项字母后面加上一个冒号，
+		getopts发现冒号 后，会读取该值，然后将该值放入特殊变量OPTARG中。这个命令比较复杂，如有需要，读者可以详细参阅Shell编写的相关资料。
+		上面这个循环的作用就是依次取出脚本名称后面的选项，进行处理，如果输入了非法选项，则进入"?指定的部分，退出脚本程序。
+		第二个，Bash提供了一种用于交互式应用的扩展select，用户可以从一组不同的值中进行选择。其语法如下：
+		select var in …; do
+
+		break;
+
+		done
+
+		例如，下面这段程序的输出是：
+
+		#!/bin/bash
+
+		echo "Your choice?"
+
+		select var in "a" "b" "c"; do
+
+		break
+
+		done
+
+		echo $var
+
+		----------------------------
+
+		Your choice?
+
+		1) a
+
+		2) b
+
+		3) c
+
+		第三，Shell Script中也可以使用自定义的函数，其语法形式如下：
+
+		functionname()
+
+		{
+
+		…
+
+		}
+
+		例如我们可以把上面第二个例子中第四到第十二行放入一个名为help函数体内，以后每次调用的时候直接写help即可。函数中处理函数调用参数的方法是，
+		直接用上面讲过的$1、$2来分别表示第一、第二个参数，用$*表示参数列表。
+		第四，我们也可以在Shell下调试Shell Script脚本，当然最简单的方法就是用echo输出查看变量取值了。Bash也提供了真正的调试方法，就是执行脚本的时候用-x参数。
+		sh ?x filename.sh
+		这会执行脚本并显示脚本中所有变量的取值，也可以使用参数-n，它并不执行脚本，只是返回所有的语法错误。
+	
+	linux中shell变量$#,$@,$0,$1,$2的含义解释: 
+		变量说明: 
+		$$ 
+		Shell本身的PID（ProcessID） 
+		$! 
+		Shell最后运行的后台Process的PID
+		$? 
+		最后运行的命令的结束代码（返回值） 
+		$- 
+		使用Set命令设定的Flag一览 
+		$* 
+		所有参数列表。如"$*"用「"」括起来的情况、以"$1 $2 … $n"的形式输出所有参数。 
+		$@ 
+		所有参数列表。如"$@"用「"」括起来的情况、以"$1" "$2" … "$n" 的形式输出所有参数。 
+		$# 
+		添加到Shell的参数个数 
+		$0 
+		Shell本身的文件名 
+		$1～$n 
+		添加到Shell的各参数值。$1是第1参数、$2是第2参数…。 
+
+	linux定时器crontab
+		今天做了个数据库的备份脚本，顺便系统得学习一下Linux下定时执行脚本的设置。Linux下的定时执行主要是使用crontab文件中加入定制计划来执行，
+		设置比Windows稍微复杂一些(因为没有图形界面嘛)，但是也不是非常复杂，基本上用过一遍就能记住了，关键是要记住/var/spool/cron这个目录。下面看一下具体的用法：
+ 
+		首先查看一下/etc/crontab文件：
+	 
+		$ cat /etc/crontab
+		SHELL=/bin/bash
+		PATH=/sbin:/bin:/usr/sbin:/usr/bin
+		MAILTO=root
+		HOME=/
+		
+		# run-parts
+		01 * * * * root run-parts /etc/cron.hourly
+		02 4 * * * root run-parts /etc/cron.daily
+		22 4 * * 0 root run-parts /etc/cron.weekly
+		42 4 1 * * root run-parts /etc/cron.monthly
+
+		前四行是有关设置cron任务运行的环境变量。SHELL变量的值指定系统使用的SHELL环境(该样例为bash shell)，PATH变量定义了执行命令的路径。
+		Cron的输出以电子邮件的形式发给MAILTO变量定义的用户名。如果MAILTO变量定义为空字符串(MAILTO="")，电子邮件不会被发送。执行命令或脚本时HOME变量可用来设置基目录。
+		文件/etc/crontab中每行任务的描述格式如下: 
+	 
+		minute hour day month dayofweek command
+	 
+		minute - 从0到59的整数 
+		hour - 从0到23的整数 
+		day - 从1到31的整数 (必须是指定月份的有效日期)
+		month - 从1到12的整数 (或如Jan或Feb简写的月份)
+		dayofweek - 从0到7的整数，0或7用来描述周日 (或用Sun或Mon简写来表示)
+		command - 需要执行的命令(可用as ls /proc >> /tmp/proc或 执行自定义脚本的命令) 
+	 
+		root表示以root用户身份来运行
+		run-parts表示后面跟着的是一个文件夹，要执行的是该文件夹下的所有脚本
+
+		对于以上各语句，星号(*)表示所有可用的值。例如*在指代month时表示每月执行(需要符合其他限制条件)该命令。 
+		整数间的连字号(-)表示整数列，例如1-4意思是整数1,2,3,4
+		指定数值由逗号分开。如：3,4,6,8表示这四个指定整数。
+		符号“/”指定步进设置。“/”表示步进值。如0-59/2定义每两分钟执行一次。步进值也可用星号表示。如*/3用来运行每三个月份运行指定任务。
+
+		以“#”开头的为注释行,不会被执行。
+
+		如果一个cron任务需要定期而不是按小时,天,周,月来执行,则需要添加/etc/cron.d目录。这个目录下的所有文件和文件/etc/crontab语法相同，查看样例：
+
+		# record the memory usage of the system every monday 
+		# at 3:30AM in the file /tmp/meminfo 
+		30 3 * * mon cat /proc/meminfo >> /tmp/meminfo 
+		# run custom scrīpt the first day of every month at 4:10AM 
+		10 4 1 * * /root/scrīpts/backup.sh
+
+		除了root用户之外的用户可以执行crontab配置计划任务。所有用户定义的crontab存储在目录/var/spool/cron下，任务会以创建者的身份被执行。
+		要以特定用户创建一个crontab，先以该用户登录，执行命令crontab -e，系统会启动在VISUAL或者EDITOR中指定的的编辑软件编辑crontab。文件内容与/etc/crontab格式相同。示例如下：
+
+		0 3 * * * /home/dbbackup/db1backup.sh backup
+		0 4 * * * /home/dbbackup/db2backup.sh backup
+
+		表示每天3点执行/home/dbbackup/db1backup.sh backup，4点执行/home/dbbackup/db2backup.sh backup，如果是每五分钟执行一次可改为：
+
+		*/5 * * * * /home/dbbackup/db2backup.sh backup
+
+		当更改的crontab需要保存时，文件会保存在成如下文件/var/spool/cron/username。文件名会根据用户名而不同。
+
+		cron服务会每分钟检查一次/etc/crontab、/etc/cron.d/、/var/spool/cron文件下的变更。如果发现变化，就会下载到存储器中。因此，即使crontab文件改变了，
+		程序也不需要重新启动。推荐自定义的任务使用crontab -e命令添加，退出后用/etc/init.d/crond restart命令重启crond进程，官方文件说不用重启进程，
+		但我遇到不重启无法运行任务的情况。开始不知道/etc/crontab文件中的run-parts是什么意思，直接把命令按照/etc/crontab的格式加上总是无法运行，
+		后来才知道run-parts是指后面跟着的是文件夹。
+	 
+	 
+		下面再附一篇介绍：
+		************************************************************************************
+		cron是一个linux下的定时执行工具，可以在无需人工干预的情况下运行作业。由于Cron 是Linux的内置服务，但它不自动起来，可以用以下的方法启动、关闭这个服务：
+		 
+		/sbin/service crond start //启动服务
+		/sbin/service crond stop //关闭服务
+		/sbin/service crond restart //重启服务
+		/sbin/service crond reload //重新载入配置
+		 
+		你也可以将这个服务在系统启动的时候自动启动：
+		 
+		在/etc/rc.d/rc.local这个脚本的末尾加上：
+		/sbin/service crond start
+		 
+		现在Cron这个服务已经在进程里面了，我们就可以用这个服务了，Cron服务提供以下几种接口供大家使用：
+		 
+		1.直接用crontab命令编辑
+		 
+		cron服务提供crontab命令来设定cron服务的，以下是这个命令的一些参数与说明：
+		 
+		crontab -u //设定某个用户的cron服务，一般root用户在执行这个命令的时候需要此参数
+		crontab -l //列出某个用户cron服务的详细内容
+		crontab -r //删除没个用户的cron服务
+		crontab -e //编辑某个用户的cron服务
+		 
+		比如说root查看自己的cron设置：crontab -u root -l
+		再例如，root想删除fred的cron设置：crontab -u fred -r
+		在编辑cron服务时，编辑的内容有一些格式和约定，输入：crontab -u root -e
+		
+		进入vi编辑模式，编辑的内容一定要符合下面的格式：*/1 * * * * ls >> /tmp/ls.txt
+		 
+		这个格式的前一部分是对时间的设定，后面一部分是要执行的命令，如果要执行的命令太多，可以把这些命令写到一个脚本里面，然后在这里直接调用这个脚本就可以了，
+		调用的时候记得写出命令的完整路径。时间的设定我们有一定的约定，前面五个*号代表五个数字，数字的取值范围和含义如下：
+		 
+		分钟 (0-59)
+		小時(0-23)
+		日期(1-31)
+		月份(1-12)
+		星期(0-6) //0代表星期天
+		 
+		除了数字还有几个个特殊的符号就是"*"、"/"和"-"、","，*代表所有的取值范围内的数字，"/"代表每的意思,"*/5"表示每5个单位，
+		"-"代表从某个数字到某个数字,","分开几个离散的数字。以下举几个例子说明问题：
+		 
+		每天早上6点
+		-----------------
+		0 6 * * * echo "Good morning." >> /tmp/test.txt //注意单纯echo，从屏幕上看不到任何输出，因为cron把任何输出都email到root的信箱了。
+		 
+		每两个小时
+		-----------------
+		0 */2 * * * echo "Have a break now." >> /tmp/test.txt
+		 
+		晚上11点到早上8点之间每两个小时，早上八点
+		-----------------
+		0 23-7/28 * * * echo "Have a good dream：）" >> /tmp/test.txt
+		 
+		每个月的4号和每个礼拜的礼拜一到礼拜三的早上11点
+		-----------------
+		0 11 4 * 1-3 command line
+		 
+		1月1日早上4点
+		-----------------
+		0 4 1 1 * command line
+		 
+			每次编辑完某个用户的cron设置后，cron自动在/var/spool/cron下生成一个与此用户同名的文件，此用户的cron信息都记录在这个文件中，
+			这个文件是不可以直接编辑的，只可以用crontab -e 来编辑。cron启动后每过一份钟读一次这个文件，检查是否要执行里面的命令。因此此文件修改后不需要重新启动cron服务。
+		 
+		2.编辑/etc/crontab 文件配置cron
+		 
+			cron服务每分钟不仅要读一次/var/spool/cron内的所有文件，还需要读一次/etc/crontab，因此我们配置这个文件也能运用cron服务做一些事情。
+			用crontab配置是针对某个用户的，而编辑/etc/crontab是针对系统的任务。此文件的文件格式是：
+		 
+		SHELL=/bin/bash
+		PATH=/sbin:/bin:/usr/sbin:/usr/bin
+		MAILTO=root //如果出现错误，或者有数据输出，数据作为邮件发给这个帐号
+		HOME=/      //使用者运行的路径,这里是根目录
+		# run-parts
+		01 * * * * root run-parts /etc/cron.hourly //每小时执行/etc/cron.hourly内的脚本
+		02 4 * * * root run-parts /etc/cron.daily //每天执行/etc/cron.daily内的脚本
+		22 4 * * 0 root run-parts /etc/cron.weekly //每星期执行/etc/cron.weekly内的脚本
+		42 4 1 * * root run-parts /etc/cron.monthly //每月去执行/etc/cron.monthly内的脚本
+		 
+		大家注意"run-parts"这个参数了，如果去掉这个参数的话，后面就可以写要运行的某个脚本名，而不是文件夹名了。
+		************************************************************************************
+
+
+
+
+
+
+	

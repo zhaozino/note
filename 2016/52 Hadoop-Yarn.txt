@@ -1,0 +1,283 @@
+
+There are 0 datanode(s) running and no node(s) are excluded in this operation
+解决办法
+	删除dfs.namenode.name.dir设置的（file：///dfs/data）目录下的current 文件夹即可解决。
+
+***********************************************************************
+
+hadoop
+第1章：Hadoop框架
+	
+	Hadoop1.X系统组成
+		1、NameNode：名称节点，维护着存储在HDFS上的所有文件的元数据信息，包括组成文件的数据块信息，以及这些数据块在数据节点上的位置；瓶颈；
+		2、Secondary NameNode：辅助名称节点，它不是nameNode的热备份，它为nameNode组件执行一些内务处理功能；
+		3、DataNode：数据节点，把真正的数据块存放在本地硬盘上，这些数据块组成了保存在HDFS上的每个文件；
+		4、JobTracker：作业跟踪器，它负责一个任务的整个执行过程，包括调度各个子任务(Map/Reduce子任务)到各自的计算节点运行；瓶颈；
+		5、TaskTracker：任务跟踪器，运行在各个DataNode上，用来启动和管理各个Map/Reduce任务，与JobTracker进行通信；
+		
+	架构
+		分为master nodes(主节点)、slave nodes(从节点)；
+		master nodes负责执行如下几个守护进程：
+			1、NameNode进程；
+			2、Secondary NameNode进程；
+			3、JobTracker进程；
+		slave nodes分布在整个集群上并执行如下几个守护进程：
+			4、DataNode进程；
+			5、TaskTracker进程；
+		在整个集群上，每种主节点守护进程只有一个运行实例，但是其数据节点进程和任务跟踪器进程有多个运行实例。在一个规模较小的或者用于开发/测试的集群上，
+			三个主节点进程全部运行在一台服务器上。对于生产环境或者规模较大的集群，三个主节点进程分别运行在不同的服务器上是明智的选择；
+		
+		HDFS文件系统由一下几个守护进程	协调地运行来提供服务
+			1、名称节点进程；
+			2、辅助名称节点进程；
+			3、数据节点进程；
+		HDFS系统也是主从架构的。运行名称节点进程的服务器为主节点，运行数据节点进程的服务器为从节点。一般情况下，集群中的每个节点都会运行一个数据节点进程；
+			这个数据节点进程管理着挂载到这个数据节点上的存储设备。
+			
+	Hadoop2.X 
+		Hadoop1.X中JobTracker承担两个主要功能：1、资源管理；2、作业调度/作业监控；
+		YARN把这两个功能分为两个守护进程来分别承担；这样的设计使得系统有一个全局的资源管理器以及每个程序有一个应用程序管理器；
+		
+		YARN系统有以下几个组成部分：
+			1、全局资源管理器，Resource Manager；
+			2、节点管理器，Node Manager；
+			3、应用程序管理器，Application Master；
+			4、调度器，Scheduler；
+			5、容器，Container；
+			一部分CPU和一部分内存构成了一个容器，一个应用程序运行在一组容器中。应用程序管理器的一个实例会向全局资源管理器请求获取资源。
+				调度器会通过每个节点的节点管理器来分配资源（容器）。节点管理器会向全局资源管理器汇报每个容器的使用情况；
+		
+第2章：单词统计Demo
+
+	单词统计demo
+		public class WordCountNewAPI extends Configured implements Tool{
+
+			/**
+			 * LongWritable：map输入键
+			 * Text：map输入值
+			 * Text：map输出键
+			 * IntWritable：map输出值
+			 * @author Zhao
+			 *
+			 */
+			public static class MyMapper extends Mapper<LongWritable, Text, Text, IntWritable>{
+				@Override
+				protected void map(LongWritable key, Text value, Mapper<LongWritable, Text, Text, IntWritable>.Context context)
+						throws IOException, InterruptedException {
+					String w = value.toString();
+					String[] vals = w.split(" ");
+					for(String word:vals){
+						context.write(new Text(word), new IntWritable(1));
+					}
+				}
+			}
+			
+			/**
+			 * Text：reduce输入键，map的输出键
+			 * IntWritable：reduce输入值，map输出值
+			 * Text：reduce输出键
+			 * IntWritable：reduce输出值
+			 * @author Zhao
+			 *
+			 */
+			public static class MyReducer extends Reducer<Text, IntWritable, Text, IntWritable>{
+				@Override
+				protected void reduce(Text key, Iterable<IntWritable> values,
+						Reducer<Text, IntWritable, Text, IntWritable>.Context context) throws IOException, InterruptedException {
+					int sum = 0;
+					for(IntWritable val:values){
+						sum += val.get();
+					}
+					context.write(key, new IntWritable(sum));
+				}
+			}
+
+			public int run(String[] allArgs) throws Exception{
+				Job job = Job.getInstance(this.getConf());
+				job.setJarByClass(WordCountNewAPI.class);
+				job.setOutputKeyClass(Text.class); //默认map/reduce输出键是一样的，如果不一样，可以单独设置
+				job.setOutputValueClass(IntWritable.class); //默认map/reduce输出值是一样的，如果不一样，可以单独设置
+				job.setMapperClass(MyMapper.class);
+				job.setReducerClass(MyReducer.class);
+				job.setInputFormatClass(TextInputFormat.class); //输入文件为文本格式，行数+行内容
+				job.setOutputFormatClass(TextOutputFormat.class); //输出文件位文本格式
+				
+				String[] args = new GenericOptionsParser(this.getConf(), allArgs).getRemainingArgs();
+				
+				FileInputFormat.setInputPaths(job, new Path(args[0])); //输入文件路径，可以有多个
+				FileOutputFormat.setOutputPath(job, new Path(args[1])); //输出文件路径，不能是已存在目录
+				job.submit();
+				return 0;
+			}
+			
+			public static void main(String[] args) throws Exception{
+				Configuration conf = new Configuration();
+				ToolRunner.run(new WordCountNewAPI(), args);
+			}
+
+		}
+		
+		export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:<DEPENDENT_JARS_USED_BY_CLIENT_CLASS>
+		
+		export LIBJARS=$MYLIB/commons-lang.jar, <OTHER_JARS_USED_BY_REMOTE_COMPONENTS>  //引用的第三方jar，以逗号隔开
+		
+		hadoop jar WordCountNewAPI.jar com.text.WordCountNewAPI -libjars $LIBJARS <INPUT_PATH> <OUTPUT_PATH>
+		
+	HDFS命令
+		hdfs dfs -mkdir dataPath
+		hdfs dfs -copyFromLocal /usr/local/dataPath/* /usr/hdfs/dataPath/
+		
+		hdfs dfs -ls output/dir
+		hdfs dfs -cat output/dir/file01
+		hdfs dfs -tail output/dir/file01
+		
+第3章：MapReduce开发基础
+	
+	MapReduce设计模式：SELECT、WHERE、AGGREGATION(MIN、MAX、SUM、GROUP BY、HAVING)、SORTING、JOIN；
+	
+	每一个Mapper（或者Reducer）开始运行时，都会调用一种初始化方法（调用一次），结束运行时，都会调用一种清除方法（调用一次）；
+	
+	Reducer三个重要阶段
+		排序：所有Mapper的输出都会按键排序；
+		混洗
+		归约
+	
+	在同一个Reducer中，调用一次reduce，即可处理所有与键有关的输出；
+	同一个Reducer处理的键才会进行排序，不同的Reducer之间并没有排序；
+	
+	Combiner在Mapper节点上提前聚集，可以减小MR之间的带宽传输，extends Reducer；
+	
+	一般默认，Mapper会将输出的键随机分配到Reducer，然而，相同的键总会被传输到同一个Reducer，而不管其来自哪个Mapper；
+	在Reducer中，从Mapper收到的键值对会按照顺序进行处理；
+	
+	Partioner：决定将键分配到哪个Reducer；
+		job.setPartitionerClass(MyParttionerClass);
+		
+		Partioner类的一个实例与Mapper的实例在同一个JVM上执行，在Mapper实例中每次调用context.write的时候，都会调用
+		Partitioner类的getPartition方法，其返回Reducer的索引值。
+		
+		默认的Partioner是HashPartitioner，调用hashCode()方法处理键实例，且执行模运算。
+		对于每个Reducer，在Partitioner分离键后，Reducer才会按键排序；
+		
+	每个Reducer输出一个结果文件，有多少Reducer就会有多少输出文件。
+	
+	Mapper --> Partitioner --> Combiner：在同一个JVM上；
+	Mapper：读取数据到内存缓冲区，默认512M；
+	Partitioner：在数据被写到磁盘之前，Partitioner会被调用，并且Partitioner会给每个Reducer建立划分，在每次划分的过程，
+		内存中会按键进行排序。
+		
+	混洗阶段，每个Reducer都会使用HTTP协议从Mapper节点获得属于自己的划分。
+	在Reducer节点，那些预排序的Mapper输出结果会被合并，最终，Reducer会调用reduce方法处理排序后的键值对；
+	Reducer实例会为新的键建立一个新的Reduce调用；
+	
+第4章：MapReduce开发进阶(sort、join概念)
+	Mapper --> Partitioner --> Combiner：在同一个JVM上；
+	--> Sorting Comparator --> Grouping Comparator -- > reduce
+	
+	所有Mappers和Reducers进程中的对象都必须实现一个特定的接口：Writable。另外，Reducer端的键类还要实现WritableComparable实例；
+	
+	全排序原理：按月升序，按周降序
+		1、对键实现自定义的排序逻辑，可以自定义实现了WritableComparable接口的键，或者自定义Comparator；//实现Partitioner、Reducer阶段的排序
+		2、通过自定义Partitioner混洗键的不同范围分给不同Reducer；
+		
+	如果使用第三方键，只实现了Writable，不方便扩展WritableComparable，可以通过下列方法实现键的自定义排序逻辑：
+		job.setSortComparatorClass(MyComparartor.class); 
+		MyComparartor implements RawComparator{...}
+		
+	二级分类
+		Sorting Comparator：对记录进行排序，默认调用键的排序逻辑；
+		Grouping Comparator：决定从Mapper发往Reducer的哪些值将在一次reduce调用中被处理；
+			把通过Reducer接收到的键值对进行分组，如果相等，就在同一次reduce调用中处理，否则，iterator下一个reduce调用；
+		
+		默认情况下Sorting Comparator和Grouping Comparator是一样的；
+		
+		job.setPartitionerClass(MyParttioner.class);
+		job.setSortComparatorClass(MyComparartor.class);
+		job.setGroupingComparatorClass(MyGroupingComparator.class);
+		
+	使用MapReducer进行连接，当Reduce阶段的数据量不大的时候
+		MultipleInputs：可以指定多个输入文件夹，对应于各Mappers使用不同的文件夹，唯一的限制就是它们的Mapper输出定义必须是一样的；
+			它们的输入格式、输入定义可以不同；
+			
+			MultipleInputs.addInputPath(job, new Path(args[0]), TextInputFormat.class, MyMapper0.class);
+			MultipleInputs.addInputPath(job, new Path(args[1]), TextInputFormat.class, MyMapper1.class);
+			
+	使用Map-Only作业进行连接，当Map阶段的数据量不大的时候
+		可以使用三个键连接，Reduce只能用两个键连接；
+		DistributeCache：分布式缓存；
+		job.addCacheFile((new File(args[0])).toURI();
+		job.addCacheFile((new File(args[1])).toURI();
+	
+		MapReduce框架会确保每一个Reducer的输入都是按Key进行排序的。一般，将排序以及Map的输出传输到Reduce的过程称为混洗（shuffle)。
+	每一个Map都包含一个环形的缓存，默认100M，Map首先将输出写到缓存当中。当缓存的内容达到“阈值”时（阈值默认的大小是缓存的80%），
+	一个后台线程负责将结果写到硬盘，这个过程称为“spill”。Spill过程中，Map仍可以向缓存写入结果，如果缓存已经写满，那么Map进行等待。
+		Spill的具体过程如下：首先，后台线程根据Reducer的个数将输出结果进行分组，每一个分组对应一个Reducer。其次，对于每一个分组后台线程对输出结果的Key进行排序。
+	在排序过程中，如果有Combiner函数，则对排序结果进行Combiner函数进行调用。每一次spill都会在硬盘产生一个spill文件。因此，
+	一个Map task有可能会产生多个spill文件，当Map写出最后一个输出时，会将所有的spill文件进行合并与排序，输出最终的结果文件。在这个过程中Combiner函数仍然会被调用。
+	从整个过程来看，Combiner函数的调用次数是不确定的。下面我们重点分析下Shuffle阶段的排序过程：
+		Shuffle阶段的排序可以理解成两部分，一个是对spill进行分区时，由于一个分区包含多个key值，所以要对分区内的<key,value>按照key进行排序，
+	即key值相同的一串<key,value>存放在一起，这样一个partition内按照key值整体有序了。
+    第二部分并不是排序，而是进行merge，merge有两次，一次是map端将多个spill 按照分区和分区内的key进行merge，形成一个大的文件。第二次merge是在reduce端，
+	进入同一个reduce的多个map的输出 merge在一起，该merge理解起来有点复杂，最终不是形成一个大文件，而且期间数据在内存和磁盘上都有。
+	所以shuffle阶段的merge并不是严格的排序意义，只是将多个整体有序的文件merge成一个大的文件，由于不同的task执行map的输出会有所不同，
+	所以merge后的结果不是每次都相同，不过还是严格要求按照分区划分，同时每个分区内的具有相同key的<key,value>对挨在一起。
+        Shuffle排序综述：如果只定义了map函数，没有定义reduce函数，那么输入数据经过shuffle的排序后，结果为key值相同的输出挨在一起，且key值小的一定在前面，
+	这样整体来看key值有序（宏观意义的，不一定是按从大到小，因为如果采用默认的HashPartitioner，则key 的hash值相等的在一个分区，如果key为IntWritable的话，
+	每个分区内的key会排序好的），而每个key对应的value不是有序的。
+	
+第五章：输入/输出
+	压缩方式：GZIP、BZIP2、LZO、Snappy;
+	
+	FileOutputFormat.setCompressOutput(job, true);
+	FileOutputFormat.setOutputConpressClass(job, GzipCodec.class);
+	
+	自定义FileOutputFormat、FileInputFormat;
+	
+	SequenFile：存储二进制的键值对的二进制格式文件；
+	MapFile：一种特殊格式的SequenFile，它的目的是支持随机访问保存在已排序的SequenFile;
+	Avro Files：一种二进制格式，支持多种语言的文件；
+	
+第六章：测试
+	1、MRUnit、LocalJobRunner、MiniMRCluster
+	
+第七章：Hive
+
+第八章：Pig
+
+第九章：HCatalog
+
+第十章：使用Hadoop分析日志
+
+第十一章：Hbase
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

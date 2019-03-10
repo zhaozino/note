@@ -1,0 +1,177 @@
+ZooKeeper是一个开源的分布式协调服务。提供了一套高效可靠的原语集，来实现分布式一致性服务。
+	致力于提供一个高性能、高可用，且具有严格的顺序访问控制能力（主要是写操作的严格顺序性）的分布式协调服务；
+	
+ZooKeeper是一个典型的分布式数据一致性的解决方案，分布式应用程序可以基于它实现诸如：
+	数据发布/订阅、负载均衡、命名服务、分布式协调/通知、集群管理、Master选举、分布式锁、分布式队列等功能；
+	1、发布/订阅：配置中心；
+		ZooKeeper采用的是推拉相结合的方式；客户端向服务端注册自己需要关注的节点，一旦该节点的数据发生变更，
+		那么服务端会向相应的客户端发送Watcher事件通知，客户端接收到这个消息通知后，需要主动到服务端获取最新的数据；
+	2、负载均衡：DNS/DDNS；
+	3、命名服务：有序节点；
+	4、分布式协调/通知：MySql数据复制总线：Mysql_Replicator；
+	5、集群管理：
+	6、Master选举：Master节点的建立；
+	7、分布式锁；
+	
+ZooKeeper可以保证如下分布式一致性特性
+	顺序一致性：从同一个客户端发起的事务请求，最终将会严格地按照其发起顺序被应用到ZooKeeper中；
+	原子性：所有事务请求的处理结果在整个集群中所有机器上的应用情况是一致的；
+	单一视图：无论客户端连接的是哪个ZooKeeper服务器，其看到的服务的数据模型都是一致的；
+	可靠性：一旦服务端成功应用了一个事务，并完成对客户端的响应，那么该事务所引起的服务端状态变更将会一直保留下来，
+		除非有另一个事务又对其进行了变更；
+	实时性：ZooKeeper保证在一定时间段内，客户端最终一定能够从服务器端上读取到最新的数据状态；
+	
+对于来自客户端的每个更新请求，ZooKeeper都会分配一个全局唯一的递增编号，这个编号反映了所有事务操作的先后顺序；
+	
+角色：Leader、Flower、Observer
+	Leader：为客户端提供读、写服务；
+	Flower：提供读服务，参与Leader选举，参与写操作的“过半写成功”策略；
+	Observer：提供读服务，不参与Leader选举，也不参与写操作的“过办写成功”策略；
+	
+zookeeper的API
+	create /path data
+	delete /path
+	exists /path
+	setData /path data
+	getData /path
+	getChildren /path
+	
+	ZooKeeper不允许局部写入或读取znode节点的数据；
+	
+持久节点（persistent）
+
+临时节点（ephemeral）
+	客户端崩溃或关闭了与ZooKeeper的连接时，这个节点就会被删除；
+    临时节点不能有子节点；
+   
+有序节点（sequential）
+	持久有序、临时有序节点；
+	ZooKeeper会自动在其节点名后面追加一个整型数字，这个整型数字是一个由父节点维护的自增数字；
+	
+监视点（watch）
+	通知机制是单次触发机制，有可能错失监控通知；一般通过对比前后两次的查询结果，来监控节点变化内容；
+	监控数据的变化、子节点的变化、node的创建或删除；
+	
+版本
+	每个znode都有一个版本号，它随着每次数据变化而自增。
+	setData、delete可以传入版本号参数；实现了乐观锁，防止并发问题；
+	对于每个ZNode，ZooKeeper都会为其维护一个叫做Stat的数据结构，Stat中记录了这个ZNode的三个数据版本，
+		分别是version（当前ZNode的版本）、cversion（当前ZNode子节点的版本）、aversion（当前ZNode的ACL版本）；
+	
+仲裁模式
+	ZooKeeper复制集群中的所有服务器的数据树；1/2+1
+	
+会话
+	TCP协议，一个客户端只能打开一个会话，会话中的请求以FIFO顺序执行；
+	
+zookeeper的3种角色：群首（leader），追随者（follower），观察者（observer）
+	
+zookeeper端口说明
+	2181：与client端交互；
+	2888：leader与flower、Observer交互数据；
+	3888：选举；
+	
+zookeeper选举机制：全局唯一递增序号
+	服务器1启动，给自己投票，然后发投票信息，由于其它机器还没有启动所以它收不到反馈信息，服务器1的状态一直属于Looking。
+	服务器2启动，给自己投票，同时与之前启动的服务器1交换结果，由于服务器2的编号大所以服务器2胜出，但此时投票数没有大于半数，所以两个服务器的状态依然是LOOKING。
+	服务器3启动，给自己投票，同时与之前启动的服务器1,2交换信息，由于服务器3的编号最大所以服务器3胜出，此时投票数正好大于半数，所以服务器3成为领导者，服务器1,2成为小弟。
+	服务器4启动，给自己投票，同时与之前启动的服务器1,2,3交换信息，尽管服务器4的编号大，但之前服务器3已经胜出，所以服务器4只能成为小弟。
+	服务器5启动，后面的逻辑同服务器4成为小弟。
+	
+zookeeper客户端~服务器端交互流程
+	对于exists，getData，getChildren等只读请求，收到该请求的zk服务器将会在本地处理；
+	对于create，setData，delete等有写操作的请求，则需要统一转发给leader处理，leader需要决定编号、执行操作，这个过程称为一个事务（transaction）。
+	原子性、幂等性、FIFO；
+	
+	Follower除了响应本服务器上的读请求外，follower还要处理leader的提议，并在leader提交该提议时在本地也进行提交。
+	leader和follower构成ZooKeeper集群的法定人数，也就是说，只有他们才参与新leader的选举、响应leader的提议。
+	
+	Observer：如果ZooKeeper集群的读取负载很高，或者客户端多到跨机房，可以设置一些observer服务器，以提高读取的吞吐量。
+	Observer和Follower比较相似，只有一些小区别：首先observer不属于法定人数，即不参加选举也不响应提议；其次是observer不需要将事务持久化到磁盘，
+	一旦observer被重启，需要从leader重新同步整个名字空间。
+	
+zookeeper中消息广播的具体步骤如下： 
+	4.1. 客户端发起一个写操作请求 
+	4.2. Leader服务器将客户端的request请求转化为事物proposql提案，同时为每个proposal分配一个全局唯一的ID，即ZXID。 
+	4.3. leader服务器与每个follower之间都有一个队列，leader将消息发送到该队列 
+	4.4. follower机器从队列中取出消息处理完(写入本地事物日志中)毕后，向leader服务器发送ACK确认。 
+	4.5. leader服务器收到半数以上的follower的ACK后，即认为可以发送commit 
+	4.6. leader向所有的follower服务器发送commit消息。
+	
+ZAB协议：ZooKeeper Automic Broadcast，ZooKeeper原子消息广播协议；
+	  所有事务请求必须由一个全局唯一的服务器来协调处理，即Leader；Leader服务器负责将一个客户端事务请求
+	转换成一个事务Proposal（提议），并将该Proposal分发给集群中所有的Follower服务器。之后Leader服务器
+	需要等待所有Follower服务器的反馈，一旦超过半数的Follower服务器进行了正确的反馈后，那么Leader就会
+	再次向所有的Follower服务器分发Commit消息，要求其将前一个Proposal进行提交。
+	
+ZAB协议原理：发现、同步、广播
+	发现：Leader选举过程；
+		1、Flower F将自己最后接受的事务Proposal的epoch值CEPOCH(F.p)发送给准Leader L；
+		2、当接收到来自过半Follower的CEPOCH(F.p)消息后，准Leader L会生成NEWEPOCH(e')消息给这些过半的Follower。
+			关于这个epoch值e'，准Leader L会从所有接收到的CEPOCH(F.p)消息中选取出最大的epoch值，然后对其进行加1操作，即为e'。
+		3、当Follower接收到来自准Leader L的NEWEPOCH(e')消息后，如果其检测到当前的CEPOCH(F.p)值小于e'，那么就会
+			将CEPOCH(F.p)赋值为e'，同时向这个准Leader L反馈Ack消息。在这个反馈消息(ACK-E(F.p, hf))中，包含了
+			当前该Follower的epoch CEPOCH(F.p)，以及该Follower的历史事务Proposal集合：hf；
+		3.2、当Leader L接收到来自过半Follower的确认消息Ack之后，Leader L就会从这过半服务器中选取出一个Follower F，
+			并使用其作为初始化事务集合Ie'。
+	同步：
+		1、Leader L会将e'和Ie'以NEWLEADER(e',Ie')消息的形式发送给所有Quorum中的Follower。
+		2、当Follower接收到来自Leader L的NEWLEADER(e',Ie')消息后，如果Follower发现CEPOCH(F.p)!=e'，那么直接进入下一轮循环，
+			因为此时Follower发现自己还在上一轮，或者更上轮，无法参与本轮的同步。
+	
+ZooKeeper数据分类
+	1、内存数据：节点数据、节点ACL信息、节点的路径；
+	2、磁盘数据：快照、事务日志；
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+	
+	
+	

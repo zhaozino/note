@@ -1,0 +1,427 @@
+
+***********************************************************************
+
+计算机网络、HTTP权威指南、鸟哥的linux私房菜、分布式操作系统
+
+物理层：物理链路的规范；比特流；
+数据链路层：封装成帧，透明传输，差错检测(CRC循环冗余检测)；
+网络层：IP数据报分组转发；
+传输层：TCP/IP报文，停止等待协议，滑动窗口协议(ARQ)；
+应用层；HTTP、FTP、SMTP；
+
+计算机网络
+物理层：比特；数据链路层：帧；网络层：IP数据报；运输层：报文段；应用层；
+
+物理层的中间设备叫转发器；
+数据链路层的中间设备叫网桥或桥接器；
+网络层的中间设备叫路由器；
+网络层以上的中间设备叫网关；历史原因，有些时候把路由器也称为网关；
+
+数据链路层的三个问题：封装成帧、透明传输、差错检测；
+	封装成帧：添加帧首部、尾部；
+	透明传输：帧开始(SOH)、结束标记(EOT)，特殊的控制字符；
+	差错检测：循环冗余校验CRC；模2运算，冗余码加到帧的后面；
+	数据链路层是无差错传输，并不是可靠传输，因为它没有解决帧丢失、重复、失序问题；
+	例子：PPP点对点协议；
+	MTU：链路层最大传输单元；
+	mac地址在数据帧中；
+	网络适配器：网卡，计算机的硬件地址在适配器的ROM中，而软件地址IP，则在计算机的存储器中；
+	集线器、网桥、交换机；
+	以太网局域网；
+	
+网路层：IP数据报分组转发；
+	网路协议IP、地址解析协议ARP(根据IP地址找到物理MAC地址)、逆地址解析协议RARP(根据物理Mac地址找到IP地址)、网际控制报文协议ICMP(PING)、网际组管理协议IGMP；
+	IP地址=网络号+主机号；
+	A、B、C、D、E类IP地址；
+	A：0开头，8位网络号，24位主机号；
+	B：10开头，16位网络号，16位主机号；
+	C：110开头，24位网络号，8位主机号；
+	D：1110开头，多播地址；
+	E：1111开头，保留今后使用；
+	
+	路由器总是有两个或两个以上的IP地址；
+	子网掩码：从主机号中取若干位用作子网号；
+	
+运输层：TCP/UDP
+	UDP：无连接、尽最大努力交付、面向报文；
+	TCP：面向连接的、可靠交付、全双工；
+		停止等待协议
+			A发送报文，等待B确认后，再发送下一个报文；
+			A超过一段时间仍没收到确认，就认为刚才发送的分组丢失了，重传前面发送过的分组，即超时重传；
+			B收到错误的报文直接丢掉，不通知A，A有超时重传机制；
+			B收到重复的报文，直接丢掉，并再次发送确认给A；
+		连续ARQ协议，即滑动窗口协议
+		
+应用层：HTTP/FTP/SMTP	
+	
+三次握手：
+	1、建立连接时，客户端发送syn包(syn=j)到服务器，并进入SYN_SEND状态，等待服务器确认；
+	2、服务器收到syn包，必须确认客户的SYN（ack=j+1），同时自己也发送一个SYN包（syn=k），即SYN+ACK包，此时服务器进入SYN_RECV状态；
+	3、客户端收到服务器的SYN＋ACK包，向服务器发送确认包ACK(ack=k+1)，此包发送完毕，客户端和服务器进入ESTABLISHED状态，完成三次握手。
+	完成三次握手，客户端与服务器开始传送数据，也就是ESTABLISHED状态。
+	
+四次握手
+	1、客户端发送FIN（finsh），用来关闭客户端到服务器的数据传输；
+	2、服务端收到FIN，返回ACK，确认号为收到的序号+1；
+	3、服务器关闭与客户端的连接，发送FIN给客户端；
+	4、客户端返回ACK报文确认，并将确认序号设置为收到序号加1。
+	
+TCP性能参数
+	net.ipv4.tcp_max_syn_backlog = 8192
+		SYN队列的长度，默认为1024，加大队列长度为8192，可以容纳更多等待连接的网络连接数
+	net.ipv4.tcp_syncookies = 1
+		开启SYN Cookies。当出现SYN等待队列溢出时，启用cookies来处理，可防范少量SYN攻击，默认为0，表示关闭；
+	net.ipv4.tcp_tw_reuse = 1
+		开启重用。允许将TIME-WAIT sockets重新用于新的TCP连接，默认为0，表示关闭；
+	net.ipv4.tcp_tw_recycle = 1
+		开启TCP连接中TIME-WAIT sockets的快速回收，默认为0，表示关闭；
+	net.ipv4.tcp_fin_timeout = 5
+		系统默认的TIMEOUT时间，TCP保持在FIN-WAIT-2状态的时间，单位为秒；
+	net.ipv4.tcp_keepalive_time = 1200
+		当keepalive起用的时候，TCP发送keepalive消息的频度。缺省是2小时，改为20分钟(20*60s)
+	net.ipv4.ip_local_port_range = 10000 65000
+		表示用于向外连接的端口范围。缺省情况下很小：32768到61000，改为10000到65000
+	net.ipv4.tcp_max_tw_buckets = 5000
+		系统同时保持TIME_WAIT的最大数量，如果超过这个数字，TIME_WAIT将立刻被清除并打印警告信息。默认为180000，改为5000
+	其他调优参数
+	tcp_syn_retries ：INTEGER
+	默认值是5
+	对于一个新建连接，内核要发送多少个 SYN 连接请求才决定放弃。不应该大于255，默认值是5，对应于180秒左右时间。(对于大负载而物理通信良好的网络而言,这个值偏高,可修改为2.这个值仅仅是针对对外的连接,对进来的连接,是由tcp_retries1 决定的)
+
+	tcp_synack_retries ：INTEGER
+	默认值是5
+	对于远端的连接请求SYN，内核会发送SYN ＋ ACK数据报，以确认收到上一个 SYN连接请求包。这是所谓的三次握手( threeway handshake)机制的第二个步骤。这里决定内核在放弃连接之前所送出的 SYN+ACK 数目。不应该大于255，默认值是5，对应于180秒左右时间。(可以根据上面的 tcp_syn_retries 来决定这个值)
+
+	tcp_keepalive_time ：INTEGER
+	默认值是7200(2小时)
+	当keepalive打开的情况下，TCP发送keepalive消息的频率。(由于目前网络攻击等因素,造成了利用这个进行的攻击很频繁,曾经也有cu的朋友提到过,说如果2边建立了连接,然后不发送任何数据或者rst/fin消息,那么持续的时间是不是就是2小时,空连接攻击? tcp_keepalive_time就是预防此情形的.我个人在做nat服务的时候的修改值为1800秒)
+
+	tcp_keepalive_probes：INTEGER
+	默认值是9
+	TCP发送keepalive探测以确定该连接已经断开的次数。(注意:保持连接仅在SO_KEEPALIVE套接字选项被打开是才发送.次数默认不需要修改,当然根据情形也可以适当地缩短此值.设置为5比较合适)
+
+	tcp_keepalive_intvl：INTEGER
+	默认值为75
+	探测消息发送的频率，乘以tcp_keepalive_probes就得到对于从开始探测以来没有响应的连接杀除的时间。默认值为75秒，也就是没有活动的连接将在大约11分钟以后将被丢弃。(对于普通应用来说,这个值有一些偏大,可以根据需要改小.特别是web类服务器需要改小该值,15是个比较合适的值)
+
+	tcp_retries1 ：INTEGER
+	默认值是3
+	放弃回应一个TCP连接请求前﹐需要进行多少次重试。RFC 规定最低的数值是3﹐这也是默认值﹐根据RTO的值大约在3秒 – 8分钟之间。(注意:这个值同时还决定进入的syn连接)
+
+	tcp_retries2 ：INTEGER
+	默认值为15
+	在丢弃激活(已建立通讯状况)的TCP连接之前﹐需要进行多少次重试。默认值为15，根据RTO的值来决定，相当于13-30分钟(RFC1122规定，必须大于100秒).(这个值根据目前的网络设置,可以适当地改小,我的网络内修改为了5)
+
+	tcp_orphan_retries ：INTEGER
+	默认值是7
+	在近端丢弃TCP连接之前﹐要进行多少次重试。默认值是7个﹐相当于 50秒 – 16分钟﹐视 RTO 而定。如果您的系统是负载很大的web服务器﹐那么也许需要降低该值﹐这类 sockets 可能会耗费大量的资源。另外参的考 tcp_max_orphans 。(事实上做NAT的时候,降低该值也是好处显著的,我本人的网络环境中降低该值为3)
+
+	tcp_fin_timeout ：INTEGER
+	默认值是 60
+	对于本端断开的socket连接，TCP保持在FIN-WAIT-2状态的时间。对方可能会断开连接或一直不结束连接或不可预料的进程死亡。默认值为 60 秒。过去在2.2版本的内核中是 180 秒。您可以设置该值﹐但需要注意﹐如果您的机器为负载很重的web服务器﹐您可能要冒内存被大量无效数据报填满的风险﹐FIN-WAIT-2 sockets 的危险性低于 FIN-WAIT-1 ﹐因为它们最多只吃 1.5K 的内存﹐但是它们存在时间更长。另外参考 tcp_max_orphans。(事实上做NAT的时候,降低该值也是好处显著的,我本人的网络环境中降低该值为30)
+
+	tcp_max_tw_buckets ：INTEGER
+	默认值是180000
+	系 统在同时所处理的最大 timewait sockets 数目。如果超过此数的话﹐time-wait socket 会被立即砍除并且显示警告信息。之所以要设定这个限制﹐纯粹为了抵御那些简单的 DoS 攻击﹐千万不要人为的降低这个限制﹐不过﹐如果网络条件需要比默认值更多﹐则可以提高它(或许还要增加内存)。(事实上做NAT的时候最好可以适当地增加该值)
+
+	tcp_tw_recycle ：BOOLEAN
+	默认值是0
+	打开快速 TIME-WAIT sockets 回收。除非得到技术专家的建议或要求﹐请不要随意修改这个值。(做NAT的时候，建议打开它)
+
+	tcp_tw_reuse：BOOLEAN
+	默认值是0
+	该文件表示是否允许重新应用处于TIME-WAIT状态的socket用于新的TCP连接(这个对快速重启动某些服务,而启动后提示端口已经被使用的情形非常有帮助)
+
+	tcp_max_orphans ：INTEGER
+	缺省值是8192
+	系统所能处理不属于任何进程的TCP sockets最大数量。假如超过这个数量﹐那么不属于任何进程的连接会被立即reset，并同时显示警告信息。之所以要设定这个限制﹐纯粹为了抵御那些简单的 DoS 攻击﹐千万不要依赖这个或是人为的降低这个限制(这个值Redhat AS版本中设置为32768,但是很多防火墙修改的时候,建议该值修改为2000)
+
+	tcp_abort_on_overflow ：BOOLEAN
+	缺省值是0
+	当守护进程太忙而不能接受新的连接，就象对方发送reset消息，默认值是false。这意味着当溢出的原因是因为一个偶然的猝发，那么连接将恢复状态。只有在你确信守护进程真的不能完成连接请求时才打开该选项，该选项会影响客户的使用。(对待已经满载的sendmail,apache这类服务的时候,这个可以很快让客户端终止连接,可以给予服务程序处理已有连接的缓冲机会,所以很多防火墙上推荐打开它)
+
+	tcp_syncookies ：BOOLEAN
+	默认值是0
+	只有在内核编译时选择了CONFIG_SYNCOOKIES时才会发生作用。当出现syn等候队列出现溢出时象对方发送syncookies。目的是为了防止syn flood攻击。
+	注意：该选项千万不能用于那些没有收到攻击的高负载服务器，如果在日志中出现synflood消息，但是调查发现没有收到synflood攻击，而是合法用户的连接负载过高的原因，你应该调整其它参数来提高服务器性能。参考:
+	tcp_max_syn_backlog
+	tcp_synack_retries
+	tcp_abort_on_overflow
+	syncookie严重的违背TCP协议，不允许使用TCP扩展，可能对某些服务导致严重的性能影响(如SMTP转发)。(注意,该实现与BSD上面使用的tcp proxy一样,是违反了RFC中关于tcp连接的三次握手实现的,但是对于防御syn-flood的确很有用.)
+
+	tcp_stdurg ：BOOLEAN
+	默认值为0
+	使用 TCP urg pointer 字段中的主机请求解释功能。大部份的主机都使用老旧的 BSD解释，因此如果您在 Linux 打开它﹐或会导致不能和它们正确沟通。
+
+	tcp_max_syn_backlog ：INTEGER
+	对于那些依然还未获得客户端确认的连接请求﹐需要保存在队列中最大数目。对于超过 128Mb 内存的系统﹐默认值是 1024 ﹐低于 128Mb 的则为 128。如果服务器经常出现过载﹐可以尝试增加这个数字。警告﹗假如您将此值设为大于 1024﹐最好修改 include/net/tcp.h 里面的 TCP_SYNQ_HSIZE ﹐以保持 TCP_SYNQ_HSIZE*16<=tcp_max_syn_backlog ﹐并且编进核心之内。(SYN Flood攻击利用TCP协议散布握手的缺陷，伪造虚假源IP地址发送大量TCP-SYN半打开连接到目标系统，最终导致目标系统Socket队列资源耗 尽而无法接受新的连接。为了应付这种攻击，现代Unix系统中普遍采用多连接队列处理的方式来缓冲(而不是解决)这种攻击，是用一个基本队列处理正常的完 全连接应用(Connect()和Accept() )，是用另一个队列单独存放半打开连接。这种双队列处理方式和其他一些系统内核措施(例如Syn-Cookies/Caches)联合应用时，能够比较有效的缓解小规模的SYN Flood攻击(事实证明<1000p/s)加大SYN队列长度可以容纳更多等待连接的网络连接数，所以对Server来说可以考虑增大该值.)
+
+	tcp_window_scaling ：INTEGER
+	缺省值为1
+	该 文件表示设置tcp/ip会话的滑动窗口大小是否可变。参数值为布尔值，为1时表示可变，为0时表示不可变。tcp/ip通常使用的窗口最大可达到 65535 字节，对于高速网络，该值可能太小，这时候如果启用了该功能，可以使tcp/ip滑动窗口大小增大数个数量级，从而提高数据传输的能力(RFC 1323)。（对普通地百M网络而言，关闭会降低开销，所以如果不是高速网络，可以考虑设置为0）
+
+	tcp_timestamps ：BOOLEAN
+	缺省值为1
+	Timestamps 用在其它一些东西中﹐可以防范那些伪造的 sequence 号码。一条1G的宽带线路或许会重遇到带 out-of-line数值的旧sequence 号码(假如它是由于上次产生的)。Timestamp 会让它知道这是个 ‘旧封包’。(该文件表示是否启用以一种比超时重发更精确的方法（RFC 1323）来启用对 RTT 的计算；为了实现更好的性能应该启用这个选项。)
+
+	tcp_sack ：BOOLEAN
+	缺省值为1
+	使 用 Selective ACK﹐它可以用来查找特定的遗失的数据报— 因此有助于快速恢复状态。该文件表示是否启用有选择的应答（Selective Acknowledgment），这可以通过有选择地应答乱序接收到的报文来提高性能（这样可以让发送者只发送丢失的报文段）。(对于广域网通信来说这个选项应该启用，但是这会增加对 CPU 的占用。)
+
+	tcp_fack ：BOOLEAN
+	缺省值为1
+	打开FACK拥塞避免和快速重传功能。(注意，当tcp_sack设置为0的时候，这个值即使设置为1也无效)
+
+	tcp_dsack ：BOOLEAN
+	缺省值为1，允许TCP发送”两个完全相同”的SACK。
+	
+	
+	
+HTTP权威指南
+	http报文格式：起始行、首部、主体；
+	
+		起始行：GET /text/hi-there.txt HTTP/1.1
+		首部：Content-type:text/plain
+		      Content-length:19
+		主体：Hi!I am a message!
+		
+		请求报文：
+			<method> <request-URL> <version>
+			<headers>
+			<entity-body>
+			
+		响应报文：
+			<version> <status> <reason-phrase>
+			<headers>
+			<entity-body>
+	
+	HTTP CODE
+		200
+		204：head请求，查看资源类型；
+		206：请求一个未完成的下载时，range信息；
+		
+		301：重定向，永久的；
+		302：重定向，暂时的；
+		304：静态文件，没有改变；
+		
+		400：Bad Request，语法错误；
+		401：未授权；
+		403：Forbidden，服务器接受请求，但是被拒绝处理。
+		404：NOT FOUND；
+		
+		500：系统内部错误；
+		503：服务不可用；
+	
+	1×× 　　保留
+	2×× 　　表示请求成功地接收
+	3×× 　　为完成请求客户需进一步细化请求
+	4×× 　　客户错误
+	5×× 　　服务器错误
+	
+	HTTP CODE
+		
+		200 OK 
+		指示客服端的请求已经成功收到，解析，接受。
+
+		201 Created 
+		请求已经完成并一个新的返回资源被创建。被创建的资源可能是一个URI资源，通常URI资源在Location头指定。回送应该包含一个实体数据
+		并且包含资源特性以及location通过用户或者用户代理来选择合适的方法。实体数据格式通过煤体类型来指定即content-type头。最开始服务 器
+		必须创建指定的资源在返回201状态码之前。如果行为没有被立刻执行，服务器应该返回202。
+
+		202 Accepted 
+		请求已经被接受用来处理。但是处理并没有完成。请求可能或者根本没有遵照执行，因为处理实际执行过程中可能被拒绝。
+		
+		203 Non-Authoritative Information
+		
+		204 No Content 
+		服务器已经接受请求并且没必要返回实体数据，可能需要返回更新信息。回送可能包含新的或更新信息由entity-headers呈现。
+		只返会首行、header，不返回body，这样数据量比较少；客户端用HEAD方法请求；
+		
+		205 Reset Content 
+		服务器已经接受请求并且用户代理应该重新设置文档视图。
+		
+		206 Partial Content 
+		服务器已经接受请求GET请求资源的部分。请求必须包含一个Range头信息以指示获取范围可能必须包含If-Range头信息以成立请求条件。
+		这种情况经常发生在客户端继续请求一个未完成的下载的时候(通常是当客户端加载一个体积较大的嵌入文件,比如视屏或PDF文件),或者是客户端尝试实现带宽遏流的时候.
+		
+		Redirection 
+		==================================
+		300 Multiple Choices
+		请求资源符合任何一个呈现方式。
+		
+		301 Moved Permanently 
+		请求的资源已经被赋予一个新的URI。
+		
+		302 Found 
+		通过不同的URI请求资源的临时文件。
+		
+		303 See Other
+		
+		304 Not Modified 
+		如果客服端已经完成一个有条件的请求并且请求是允许的，但是这个文档并没有改变，服务器应该返回304状态码。304
+		状态码一定不能包含信息主体，从而通常通过一个头字段后的第一个空行结束。
+
+		305 Use Proxy
+		请求的资源必须通过代理（由Location字段指定）来访问。Location资源给出了代理的URI。
+
+		306 Unused
+
+		307 Temporary Redirect
+		
+		Client Error 
+		=====================
+		400 Bad Request 
+		因为错误的语法导致服务器无法理解请求信息。
+		
+		401 Unauthorized 
+		如果请求需要用户验证。回送应该包含一个WWW-Authenticate头字段用来指明请求资源的权限。
+
+		402 Payment Required 
+		保留状态码
+		
+		403 Forbidden 
+		服务器接受请求，但是被拒绝处理。
+
+		404 Not Found 
+		服务器已经找到任何匹配Request-URI的资源。
+
+		405 Menthod Not Allowed 
+		Request-Line 请求的方法不被允许通过指定的URI。
+
+		406 Not Acceptable
+
+		407 Proxy Authentication Required
+
+		408 Reqeust Timeout 
+		客服端没有提交任何请求在服务器等待处理时间内。
+
+		409 Conflict
+
+		410 Gone
+
+		411 Length Required 
+		服务器拒绝接受请求在没有定义Content-Length字段的情况下。
+
+		412 Precondition Failed
+
+		413 Request Entity Too Large 
+		服务器拒绝处理请求因为请求数据超过服务器能够处理的范围。服务器可能关闭当前连接来阻止客服端继续请求。
+
+		414 Request-URI Too Long 
+		服务器拒绝服务当前请求因为URI的长度超过了服务器的解析范围。
+
+		415 Unsupported Media Type 
+		服务器拒绝服务当前请求因为请求数据格式并不被请求的资源支持。
+
+		416 Request Range Not Satisfialbe
+
+		417 Expectation Failed
+
+		 
+
+		Server Error 
+		===================================
+		500 Internal Server Error 
+		服务器遭遇异常阻止了当前请求的执行
+
+		501 Not Implemented 
+		服务器没有相应的执行动作来完成当前请求。
+
+		502 Bad Gateway
+
+		503 Service Unavailable 
+		因为临时文件超载导致服务器不能处理当前请求。
+
+		504 Gateway Timeout
+
+		505 Http Version Not Supported
+	
+	Requests部分
+		Header	解释	示例
+		Accept	指定客户端能够接收的内容类型	Accept: text/plain, text/html
+		Accept-Charset	浏览器可以接受的字符编码集。	Accept-Charset: iso-8859-5
+		Accept-Encoding	指定浏览器可以支持的web服务器返回内容压缩编码类型。	Accept-Encoding: compress, gzip
+		Accept-Language	浏览器可接受的语言	Accept-Language: en,zh
+		Accept-Ranges	可以请求网页实体的一个或者多个子范围字段	Accept-Ranges: bytes
+		Authorization	HTTP授权的授权证书	Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==
+		Cache-Control	指定请求和响应遵循的缓存机制	Cache-Control: no-cache
+		Connection	表示是否需要持久连接。（HTTP 1.1默认进行持久连接）	Connection: close
+		Cookie	HTTP请求发送时，会把保存在该请求域名下的所有cookie值一起发送给web服务器。	Cookie: $Version=1; Skin=new;
+		Content-Length	请求的内容长度	Content-Length: 348
+		Content-Type	请求的与实体对应的MIME信息	Content-Type: application/x-www-form-urlencoded
+		Date	请求发送的日期和时间	Date: Tue, 15 Nov 2010 08:12:31 GMT
+		Expect	请求的特定的服务器行为	Expect: 100-continue
+		From	发出请求的用户的Email	From: user@email.com
+		Host	指定请求的服务器的域名和端口号	Host: www.zcmhi.com
+		If-Match	只有请求内容与实体相匹配才有效	If-Match: “737060cd8c284d8af7ad3082f209582d”
+		If-Modified-Since	如果请求的部分在指定时间之后被修改则请求成功，未被修改则返回304代码	If-Modified-Since: Sat, 29 Oct 2010 19:43:31 GMT
+		If-None-Match	如果内容未改变返回304代码，参数为服务器先前发送的Etag，与服务器回应的Etag比较判断是否改变	If-None-Match: “737060cd8c284d8af7ad3082f209582d”
+		If-Range	如果实体未改变，服务器发送客户端丢失的部分，否则发送整个实体。参数也为Etag	If-Range: “737060cd8c284d8af7ad3082f209582d”
+		If-Unmodified-Since	只在实体在指定时间之后未被修改才请求成功	If-Unmodified-Since: Sat, 29 Oct 2010 19:43:31 GMT
+		Max-Forwards	限制信息通过代理和网关传送的时间	Max-Forwards: 10
+		Pragma	用来包含实现特定的指令	Pragma: no-cache
+		Proxy-Authorization	连接到代理的授权证书	Proxy-Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==
+		Range	只请求实体的一部分，指定范围	Range: bytes=500-999
+		Referer	先前网页的地址，当前请求网页紧随其后,即来路	Referer: http://www.zcmhi.com/archives/71.html
+		TE	客户端愿意接受的传输编码，并通知服务器接受接受尾加头信息	TE: trailers,deflate;q=0.5
+		Upgrade	向服务器指定某种传输协议以便服务器进行转换（如果支持）	Upgrade: HTTP/2.0, SHTTP/1.3, IRC/6.9, RTA/x11
+		User-Agent	User-Agent的内容包含发出请求的用户信息	User-Agent: Mozilla/5.0 (Linux; X11)
+		Via	通知中间网关或代理服务器地址，通信协议	Via: 1.0 fred, 1.1 nowhere.com (Apache/1.1)
+		Warning	关于消息实体的警告信息	Warn: 199 Miscellaneous warning
+		
+	Responses 部分 
+		Header	解释	示例
+		Accept-Ranges	表明服务器是否支持指定范围请求及哪种类型的分段请求	Accept-Ranges: bytes
+		Age	从原始服务器到代理缓存形成的估算时间（以秒计，非负）	Age: 12
+		Allow	对某网络资源的有效的请求行为，不允许则返回405	Allow: GET, HEAD
+		Cache-Control	告诉所有的缓存机制是否可以缓存及哪种类型	Cache-Control: no-cache
+		Content-Encoding	web服务器支持的返回内容压缩编码类型。	Content-Encoding: gzip
+		Content-Language	响应体的语言	Content-Language: en,zh
+		Content-Length	响应体的长度	Content-Length: 348
+		Content-Location	请求资源可替代的备用的另一地址	Content-Location: /index.htm
+		Content-MD5	返回资源的MD5校验值	Content-MD5: Q2hlY2sgSW50ZWdyaXR5IQ==
+		Content-Range	在整个返回体中本部分的字节位置	Content-Range: bytes 21010-47021/47022
+		Content-Type	返回内容的MIME类型	Content-Type: text/html; charset=utf-8
+		Date	原始服务器消息发出的时间	Date: Tue, 15 Nov 2010 08:12:31 GMT
+		ETag	请求变量的实体标签的当前值	ETag: “737060cd8c284d8af7ad3082f209582d”
+		Expires	响应过期的日期和时间	Expires: Thu, 01 Dec 2010 16:00:00 GMT
+		Last-Modified	请求资源的最后修改时间	Last-Modified: Tue, 15 Nov 2010 12:45:26 GMT
+		Location	用来重定向接收方到非请求URL的位置来完成请求或标识新的资源	Location: http://www.zcmhi.com/archives/94.html
+		Pragma	包括实现特定的指令，它可应用到响应链上的任何接收方	Pragma: no-cache
+		Proxy-Authenticate	它指出认证方案和可应用到代理的该URL上的参数	Proxy-Authenticate: Basic
+		refresh	应用于重定向或一个新的资源被创造，在5秒之后重定向（由网景提出，被大部分浏览器支持）	Refresh: 5; url=http://www.zcmhi.com/archives/94.html
+		Retry-After	如果实体暂时不可取，通知客户端在指定时间之后再次尝试	Retry-After: 120
+		Server	web服务器软件名称	Server: Apache/1.3.27 (Unix) (Red-Hat/Linux)
+		Set-Cookie	设置Http Cookie	Set-Cookie: UserID=JohnDoe; Max-Age=3600; Version=1
+		Trailer	指出头域在分块传输编码的尾部存在	Trailer: Max-Forwards
+		Transfer-Encoding	文件传输编码	Transfer-Encoding:chunked
+		Vary	告诉下游代理是使用缓存响应还是从原始服务器请求	Vary: *
+		Via	告知代理客户端响应是通过哪里发送的	Via: 1.0 fred, 1.1 nowhere.com (Apache/1.1)
+		Warning	警告实体可能存在的问题	Warning: 199 Miscellaneous warning
+		WWW-Authenticate	表明客户端请求实体应该使用的授权方案	WWW-Authenticate: Basic
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

@@ -1,0 +1,185 @@
+
+***********************************************************************
+
+hadoop、spark/scala、storm
+
+lines = sc.textFile("README.md")
+lines.count()
+lines.first()
+
+sparkContext
+
+RDD：分布式元素集合；
+
+RDD支持两种类型的操作：转化操作、行动操作；
+	转化操作：由一个RDD生成一个新的RDD；lines.filter(line=>line.contains("scala"));
+	行动操作：会对RDD计算出一个结果，并把结果返回到驱动器程序中；lines.first();
+	
+惰性计算：虽然你可以在任何时候定义新的RDD，但Spark只会惰性计算这些RDD，它们只有第一次在一个行动操作中用到时，才会真正计算；
+	默认情况下，Spark的RDD会在你每次对它们进行行动操作时重新计算，如果想在多个行动操作中重用同一个RDD，可以使用RDD.persisit()
+	让Spark把这个RDD缓存下来；可以缓存到内存或磁盘上；
+	
+创建RDD的方式
+	1、读取外部数据集；
+		val lines = sc.textFile("/path/to/README.md");
+	2、驱动器程序中对一个集合进行并行化，不常用；
+		var lines = sc.parallelize(List("pandas", "i like pandas"));
+	
+通过转化操作，你从已有的RDD中派生出新的RDD，Spark会使用谱系图来记录这些不同RDD之间的依赖关系。Spark需要用这些信息来按需计算每个RDD，
+	也可以依靠谱系图在持久化RDD丢失部分数据时恢复所丢失的数据；
+	
+常见的转化操作
+	map：接收一个函数，把这个函数用于RDD中的每个元素，将函数的返回结果作为结果RDD中对应元素的值
+		val input = sc.parallelize(List(1,2,3,4))
+		val result = input.map(x=>x+1)
+		println(result.collect()) //{2,3,4,5}
+	
+	flatMap：和map类似，但返回的不是一个元素，而是一个返回值序列的迭代器，我们得到的是一个包含各个迭代器可访问的所有元素的RDD。
+		val lines = sc.parallelize(List("hello world", "hi"))
+		val words = input.flatMap(line=>line.split(" "))
+		println(words.first()) //hello
+		
+	filter：接收一个函数，将RDD中满足该函数的元素放入新的RDD中返回；
+	
+	伪集合操作
+		尽管RDD本身不是严格意义上的集合，但它也支持许多数学上的集合操作，比如合并和相交操作。这些操作都要求操作的RDD是相同数据类型的；
+		
+	union：它会返回一个包含两个RDD中所有元素的RDD，可以包含重复数据；
+		val r1 = sc.parallelize(List(1,2,3,4))
+		val r2 = sc.parallelize(List(4, 5))
+		val result = r1.union(r2)
+		println(result.collect()) //{1,2,3,4,4,5}
+		
+	intersection：只返回两个RDD中都有的元素，会去掉重复的；需要混洗，性能差；
+	subtract：接收另一个RDD，返回一个只存在于第一个RDD中而不存在第二个RDD中的所有元素组成的RDD；需要混洗，性能差；
+	cartesian：求两个RDD的笛卡尔积，返回(a, b)对，开销巨大；
+	
+常见的行动操作
+	count：RDD中元素个数；
+		rdd.count();
+	
+	countByValue：各元素在RDD中出现的次数；
+		val lines = sc.parallelize(List(1,2,3,3))
+		rdd.countByValue() //{(1,1),(2,1),(3,2)}
+	
+	take：返回RDD中的n个元素，并且尝试只访问尽量少的分区，因此该操作会得到一个不均衡的集合；需要注意的是，这些操作返回元素的顺序与你预期的可能不一样；
+		rdd.take(n);
+		
+	top：从RDD中返回前面的num个元素；
+	
+	takeOrdered(num)(ordering)：从RDD中按照提供的顺序返回最前面的num个元素；
+		
+	collect：获取整个RDD中的数据，一般只在测试中用；
+		rdd.collect();
+		
+	saveAsTextFile/saveAsSequenceFile：把RDD的数据内容以各种自带的格式保存起来；
+	
+	reduce：接收一个函数，操作两个相同元素类型的RDD数据，并返回同样类型的新元素；类似map、reduce；
+		val sum = rdd.reduce((x,y) => x+y)
+		
+	fold：和reduce类似，接收一个函数，再加上一个初始值，来做为每个分区第一次调用时的结果，初始值进行多次计算，不会改变结果，如+0，*1；
+		rdd.fold(0)((x,y)=>x+y)
+		
+	aggregate：把我们从返回值类型必须与所操作的RDD类型相同的限制中解放出来，与fold类似，使用它时，要提供我们期待返回的类型的初始值，
+		然后通过一个函数把RDD中的元素合并起来放入累加器，考虑到每个节点是在本地进行累加的，最终，还需要提供第二个函数来将累加器两两合并；
+	
+	foreach：对RDD中的每个元素使用给定的函数；
+	
+键值对操作：pair RDD
+	Spark为包含键值对类型的RDD提供了一些专有的操作，这些RDD被称为pair RDD。
+	
+创建pair RDD
+	val pairs = lines.map(x=>(x.split(" ")(0), x))
+	
+Pair RDD的转化操作
+	以键值对集合rdd = {(1,2), (3,4), (3,6)}为例；
+	
+	reduceByKey(func)：合并具有相同键的值；
+		rdd.reduceByKey((x,y)=>x+y);   {(1,2), (3,10)}
+		
+	groupByKey(): 对具有相同键的值进行分组
+		rdd.groupByKey();  {(1,[2]), (3,[4,6])}
+		
+	combinByKey(createCombiner, mergeValue, mergeCombiners, partitioner)
+		使用不同的返回类型合并具有相同键的值；
+	
+	mapValues(func): 对pair RDD中的每个值应用一个函数而不改变值
+		rdd.mapValues(x=>x+1);  {(1,3), (3,5), (3,7)}
+		
+	flatMapValues(func): 
+		对pair RDD中的每个值应用一个返回迭代器的函数，然后对返回的每个元素都生成一个对应原键的键值对记录，通常用于符号化；
+		rdd.flatMapValues(x=>(x to 5));  {(1,2), (1,3), (1,4), (1,5), (3,4), (3,5)}
+		
+	keys(): 返回一个仅包含键的RDD；  rdd.keys;  {1, 3, 3}
+	
+	values(): 返回一个仅包含值的RDD； rdd.values;  {2, 4, 6}
+	
+	sortByKey(): 返回一个根据键排序的RDD； rdd.sortByKey();  {(1,2), (3,4), (3,6)}
+	
+针对两个pair RDD的转化操作，rdd1 = {(1,2), (3,4), (3,6)}; rdd2 = {(3,9)}
+	
+	subtractByKey: 删掉RDD中键与RDD2中的键相同的元素；
+		rdd.subtractByKey(rdd2);  {(1,2)}
+		
+	join: 对两个RDD进行内连接；  rdd.join(rdd2);  {(3, (4,9)), (3, (6,9))}
+	
+	rightOtherJoin: 对两个RDD进行连接操作，确保第一个RDD的键必须存在（右外连接）；
+		rdd.rightOuterJoin(rdd2): {(3, (Some(4),9)), (3,(Some(6),9))}
+	
+	leftOtherJoin: 对两个RDD进行连接，确保第二个RDD的键必须存在（左外连接）
+		rdd.leftOuterJoin(rdd2): {(1, (Some(2),None)), (3,(4,Some(9))), (3,(6,Some(9)))}
+		
+	cogroup: 将两个RDD钟拥有相同键的数据分组；
+		rdd.cogroup(rdd2): {(1, ([2],[])), (3,([4,6],[9]))}
+	
+Pair RDD的行动操作：rdd1 = {(1,2), (3,4), (3,6)}
+	
+	countByKey：对每个键对应的元素分别计数；  
+		rdd.countByKey(): {(1,1), (3,2)}
+		
+	collectAsMap(): 将结果以映射表的形式返回，以便查询；
+		rdd.collectAsMap():  Map{(1,2), (3,6)}
+		
+	lookup(key): 返回给定键对应的所有值
+		rdd.lookup(3): [4,6]
+		
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

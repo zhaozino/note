@@ -1,0 +1,65 @@
+算法(决议的提出与批准)主要分为两个阶段:
+
+1. prepare阶段： 
+	(1). 当Porposer希望提出方案V1，首先发出prepare请求至大多数Acceptor。Prepare请求内容为序列号<SN1>;
+	(2). 当Acceptor接收到prepare请求<SN1>时，检查自身上次回复过的prepare请求<SN2>
+		a). 如果SN2>SN1，则忽略此请求，直接结束本次批准过程;
+		b). 否则检查上次批准的accept请求<SNx，Vx>，并且回复<SNx，Vx>；如果之前没有进行过批准，则简单回复<OK>;
+
+2. accept批准阶段： 
+	(1a). 经过一段时间，收到一些Acceptor回复，回复可分为以下几种:
+		a). 回复数量满足多数派，并且多数派的回复是<OK>，则Porposer发出accept请求，请求内容为议案<SN1，V1>，即超过50%回复的是<OK>；
+		b). 回复数量满足多数派，但有的回复为：<SN2，V2>，<SN3，V3>……则Porposer找到所有回复中SN最大的提案，假设为<SNx，Vx>，则发出accept请求，请求内容为议案<SN1，Vx>;
+		c). 回复数量不满足多数派，Proposer尝试增加序列号为SN1+，转1继续执行;
+	(1b). 经过一段时间，收到一些Acceptor回复，回复可分为以下几种:
+		a). 回复数量满足多数派，则确认V1被接受;
+		b). 回复数量不满足多数派，V1未被接受，Proposer增加序列号为SN1+，转1继续执行;
+
+	(2). 在不违背自己向其他proposer的承诺的前提下，acceptor收到accept 请求后即接受并回复这个请求。
+	
+	如果一个编号为n的提案具有value v，那么存在一个多数派，要么他们中所有人都没有接受（accept）编号小于n 的任何提案，
+	要么他们已经接受（accept）的所有编号小于n的提案中编号最大的那个提案具有value v。
+	
+**********************************************************************************************************************
+
+
+1、第一阶段
+ Prepare
+
+P1a：Proposer 发送 Prepare
+
+Proposer 生成全局唯一且递增的提案 ID（Proposalid，以高位时间戳 + 低位机器 IP 可以保证唯一性和递增性），向 Paxos 集群的所有机器发送 PrepareRequest，这里无需携带提案内容，只携带 Proposalid 即可。
+
+P1b：Acceptor 应答 Prepare
+
+Acceptor 收到 PrepareRequest 后，做出“两个承诺，一个应答”。
+
+两个承诺：
+
+第一，不再应答 Proposalid 小于等于（注意：这里是 <= ）当前请求的 PrepareRequest；
+
+第二，不再应答 Proposalid 小于（注意：这里是 < ）当前请求的 AcceptRequest
+
+一个应答：
+
+返回自己已经 Accept 过的提案中 ProposalID 最大的那个提案的内容，如果没有则返回空值;
+
+注意：这“两个承诺”中，蕴含两个要点：
+
+就是应答当前请求前，也要按照“两个承诺”检查是否会违背之前处理 PrepareRequest 时做出的承诺；
+
+应答前要在本地持久化当前 Propsalid。
+
+
+2、第二阶段
+ Accept
+
+P2a：Proposer 发送 Accept
+“提案生成规则”：Proposer 收集到多数派应答的 PrepareResponse
+ 后，从中选择proposalid最大的提案内容，作为要发起 Accept 的提案，如果这个提案为空值，则可以自己随意决定提案内容。然后携带上当前 Proposalid，向 Paxos 集群的所有机器发送 AccpetRequest。
+
+P2b：Acceptor
+ 应答 Accept
+
+Accpetor 收到 AccpetRequest 后，检查不违背自己之前作出的“两个承诺”情况下，持久化当前
+ Proposalid 和提案内容。最后 Proposer 收集到多数派应答的 AcceptResponse 后，形成决议。

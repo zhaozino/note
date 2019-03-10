@@ -1,0 +1,181 @@
+﻿
+Druid的3个设计原则
+	1、快速查询：部分数据聚合（Partial Aggregate）+内存化（In-Memory）+索引（Index）；
+	2、水平扩展能力（Horizontal Scalability）：分布式数据（Distributed Data）+并行化查询（Parallelizable Query）。
+	3、实时分析（Realtime Analytics）：不可变的过去，只追加的未来（Immutable Past，Append-Only Future）。
+	
+1、快速查询：
+	因为内存有限，Druid使用了bitmap和各种压缩技术；为了支持Drill-Down某些维度，Druid维护了一些倒排索引，这种技术可以加快AND和OR等计算操作。
+
+2、水平扩展能力：
+	聚合数据按时间进行分区，对segment进一步分区，每个segment不超过2000万行。
+	
+3、实时分析：
+	一旦写入就不能改变；
+	
+Druid的几个特点
+	1、数据吞吐量大；
+	2、支持流式数据摄入和实时数据摄入；
+	3、查询灵活且快；
+	4、社区支持力度大；
+	
+Druid提供两种数据摄入方式
+	1、实时数据摄入；
+	2、批量数据摄入；
+	
+Druid的架构
+	1、实时节点（Realtime Node）：即时摄入实时数据，以及生成Segment数据文件；
+	2、历史节点（Historical Node）：加载已生成好的数据文件，以供数据查询；
+	3、查询节点（Broker Node）：对外提供数据查询服务，并同时从实时节点与历史节点查询数据，合并后返回给调用方；
+	4、协调节点（Coordinator Node）：负责历史节点的数据负载均衡，以及通过规则管理数据的生命周期；
+
+同时集群还包含以下三类外部依赖
+	1、元数据库（Metastore）：存储Druid集群的原数据信息，比如segment的相关信息，一般用MySql；
+	2、分布式协调服务（Coordination）：为Druid集群提供一致性协调服务的组件，通常为Zookeeper；
+	3、数据文件存储库（DeepStorage）：存放生成的Segment数据文件，并供历史节点下载，一般HDFS；
+	
+实时流数据会被实时节点消费，然后实时节点将生成的Segment数据文件上传到数据文件存储库；而批量数据经过Druid集群消费后，
+	会被直接上传到数据文件存储库。
+	
+实时节点通过Firehose来消费实时数据，Firehose是Druid中消费实时数据的模型，可以有不同的具体实现，比如kafka等；
+
+无论哪种查询，历史节点都会首先将相关Segment数据文件从磁盘加载到内存。所以历史节点受内存大小影响很大；
+
+索引服务
+	相比实时节点生产Segment数据文件的方式，索引服务的优点是除了对数据能够用pull的方式外，还支持push的方式；不同于手工编写数据消费配置文件的方式，
+	可以通过API的编程方式来灵活定义任务配置；可以更灵活地管理与使用系统资源；可以完成Segment副本数量的控制；能够更灵活完成跟Segment数据文件相关
+	的所有操作，如合并、删除Segment数据文件等。
+	
+索引服务是主从架构，统治节点（Overload Node）为主节点，中间管理者（Middle Manager）为从节点；
+	1、统治节点对外负责接收任务请求，对内负责将任务分解并下发到从节点，即中间管理者上。统治节点有以下两种运行模式：
+	
+		1、本地模式：默认模式；
+			该模式下，统治节点不仅负责集群的任务协调分配工作，也能够负责启动一些苦工（Peon）来完成一部分具体的任务。
+	
+		2、远程模式：
+			该模式下，统治节点和中间管理者分别运行在不同的节点上，它仅负责集群的任务协调分配工作，不负责完成任何具体的任务。
+		
+	2、中间管理者和苦工
+		中间管理者是索引服务的工作节点，负责接收统治节点分配的任务，然后启动相关苦工即独立的JVM来完成具体的任务。
+		
+实时节点数据分片
+	Linear分片
+		1、添加新的实时节点时，不用更改原实时节点的配置；
+		2、查询时，即使有些分配缺失，所有分片也都会被查询；
+		
+	Numbered分片
+		1、要求所有分片都存在，才能提供查询；
+		
+新建索引
+	{
+		"type": "index_realtime",
+		"spec": {
+			"dataSchema": {
+				"dataSource": "kafkaDatasource",
+				"granularitySpec": {
+					"type": "uniform",
+					"segmentGranularity": "HOUR",
+					"queryGranularity": "MINUTE"
+				},
+				"metricsSpec": [
+					{
+						"type": "longSum",
+						"name": "offset",
+						"fieldName": "offset"
+					},
+					{
+						"type": "longSum",
+						"name": "accumulation",
+						"fieldName": "accumulation"
+					}
+				],
+				"parser": {
+					"type": "map",
+					"parseSpec": {
+						"format": "json",
+						"timestampSpec": {
+							"column": "timestamp",
+							"format": "auto"
+						},
+						"dimensionsSpec": {
+							"dimensions": [
+								"clusterName",
+								"groupId",
+								"topic",
+								"partation"
+							],
+							"dimensionExclusions": [],
+							"spatialDimensions": []
+						}
+					}
+				}
+			},
+			"ioConfig": {
+				"type": "realtime",
+				"firehose": {
+					"type": "receiver",
+					"serviceName": "kafkaMonitorService",
+					"bufferSize": 10000
+				},
+				"appendToExisting": false
+			},
+			"tuningConfig": {
+				"type": "realtime",
+				"maxRowsInMemory": 100000,
+				"intermediatePersistPeriod": "PT10m",
+				"windowPeriod": "PT10M"
+			}
+		}
+	}
+	
+查询
+	{
+	  "queryType": "timeseries",
+	  "dataSource": "sample_datasource",
+	  "granularity": "day",
+	  "descending": "true",
+	  "filter": {
+		"type": "and",
+		"fields": [
+		  { "type": "selector", "dimension": "sample_dimension1", "value": "sample_value1" },
+		  { "type": "or",
+			"fields": [
+			  { "type": "selector", "dimension": "sample_dimension2", "value": "sample_value2" },
+			  { "type": "selector", "dimension": "sample_dimension3", "value": "sample_value3" }
+			]
+		  }
+		]
+	  },
+	  "aggregations": [
+		{ "type": "longSum", "name": "sample_name1", "fieldName": "sample_fieldName1" },
+		{ "type": "doubleSum", "name": "sample_name2", "fieldName": "sample_fieldName2" }
+	  ],
+	  "postAggregations": [
+		{ "type": "arithmetic",
+		  "name": "sample_divide",
+		  "fn": "/",
+		  "fields": [
+			{ "type": "fieldAccess", "name": "postAgg__sample_name1", "fieldName": "sample_name1" },
+			{ "type": "fieldAccess", "name": "postAgg__sample_name2", "fieldName": "sample_name2" }
+		  ]
+		}
+	  ],
+	  "intervals": [ "2012-01-01T00:00:00.000/2012-01-03T00:00:00.000" ]
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

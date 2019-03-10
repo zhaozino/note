@@ -1,0 +1,20 @@
+
+Spring
+
+***********************************************************************
+
+ApplicationContext context = WebApplicationContextUtils.getWebApplicationContext(request.getServletContext());
+
+	Resource resource = new ClassPathResource("beans.xml");
+	BeanFactory beanFactory = new XmlBeanFactory(resource);
+	TestBean test = (TestBean)beanFactory.getBean("");
+	test.test();
+	
+DefaultListableBeanFactory 851
+	XmlBeanFactory继承自DefaultListableBeanFactory，而DefaultListableBeanFactory是整个bean加载的核心部分，是spring注册及加载bean的默认实现；
+	
+XmlBeanDefinitionReader
+	读取xml、解析、注册bean
+	
+XmlBeanFactory
+	定义获取bean及bean的各种属性；

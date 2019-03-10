@@ -1,0 +1,449 @@
+
+
+***********************************************************************
+
+mongodb
+
+ObjectId
+	时间戳4、机器号3、PID2、计数器3；
+	12字节，24个16进制数字组成；
+
+数据类型
+	基本的数据类型：null、布尔型、数值(默认使用64位浮点数)、字符串、日期、正则表达式、数组、内嵌文档、对象id、二进制数据、代码；
+	
+	执行js脚本：mongo *.js
+	
+一、创建、更新、删除文档
+	1、新增：db.foot.insert({"bar":"baz"});
+	
+	2、插入校验：所有文档都必须小于16M；
+	
+	3、删除：db.collection.remove(<query>, justOne);
+		db.foot.remove({"bar":"baz"}, false);
+	
+	4、drop操作：db.testPO.drop();
+	   
+	5、更新：db.collection.update(<query>, <update>, upsert, multi);
+			db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"bar":"baz"}, false, true);
+	
+	6、set修改器：db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$set": {"bar":"baz"}}, false, true);
+
+	7、增加/减少：db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$inc": {"num":-10}});
+
+	8、给文档的数组属性里添加元素：db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$push": {"comments": {"name":"zhangsan", "email":"lisi@123.com", "content":"调侃人民日报"}}});
+					 db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$addToSet": {"comments": {"name":"zhangsan", "email":"lisi@123.com", "content":"调侃人民日报"}}});
+	   在文档的数组属性里数组删除元素：db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$pop": {"key":-1}});
+					 db.foot.update({"_id":ObjectId("4fdafdafdsafdsa")}, {"$pull": {"name":"张三"}});{"name":["zhangsan", "lisi", "wangwu"]};
+					 pull会删除多个元素；
+	   基于数组位置的修改器：db.blog.update({"_id":ObjectId("fdafdafdsaf")}, {"$inc":{"comments.0.votes":1}});
+							 db.blog.update({"comments.author":"john"}, {"$set":{"comments.$.author":"jim"}});
+	
+	9、修改器速度
+		将文档插入到MongoDB中时，依次插入的文档在磁盘上的位置是相邻的，因此，如果一个文档变大了，原先的位置就放不下这个文档了，这个文档就会被移动到集合中的另一个位置；
+		MongoDB不得不移动一个文档时，它会修改集合的填充因子。填充因子是MongoDB为每个新文档预留的增长空间，可以运行db.coll.stats()查看；默认的填充因子是1，根据实际的文档
+		大小，为每个新文档分片精确的空间，不预留任何增长空间。更新文档后，需要改变填充因子时，填充因子会增加到1.5，为每个新文档预留其一半大小的空间作为增长空间。而后，填充
+		因子会持续变大，如不再有文档移动，填充因子的值会慢慢变低；
+		
+	10、upsert：db.blog.update({"name":"test"}, {"$inc":{"pageNums":1}}, true);
+
+	11、更新多个文档：db.blog.update({"name":"test"}, {"$inc":{"pageNums":1}}, true, true);
+	
+	11、返回被更新的文档：findAndModify：query、sort、update/remove(2选1)、new(返回更新后/更新前(默认)的文档)、fields(返回的字段)、upsert(布尔型);
+		po = db.runCommand({"findAndModify":collectionName,
+						"query":{"status":"READY"},
+						"sort":{"priority":-1},
+						"update":{"set":{"status":"RUNNING"}}}).value;
+	
+	10、写入的安全机制
+		1、应答式写入(默认)：数据库会给出响应，告诉你写入操作是否成功；
+		2、非应答式写入：不返回任何响应，无法知道写入操作是否成功；
+		
+二、查询
+	1、批量返回所有文档：db.blog.find(); 
+	                     db.blog.find({"name":"zhangsan"});
+
+	2、返回指定的键：db.blog.find({}, {"name":1, "sex":1});
+
+	3、查询条件：db.users.find({"age": {"$gte":18, "$lte":30}});
+				  db.users.find({"age": {"$ne":18}});
+				  
+				  db.users.find({"name": {"$in":["zhangsna", "lisi", "wangwu"]}});
+				  db.users.find({"name": {"$nin":["zhangsna", "lisi", "wangwu"]}});
+				  
+				  db.users.find({"$or": [{"name":"zhangsan"}, {"name":"lisi"}]});
+				  db.users.find({"$and": [{"name":"zhangsan"}, {"name":"lisi"}]});
+				  db.users.find({"$and": [{"x":{"$lt":1}}, {"x":4}]});
+				  
+				  db.users.find({"id_num": {"$mod": [5, 1]}});相除，余数范围；
+				  db.users.find({"id_num": {"$not": {"$mod": [5, 1]}}});相除，余数范围；
+				  
+	4、null 和 不存在是不一样的
+			db.collections.find({"z": {"$in": [null], "$exists":true}});
+		
+	5、正则表达式
+		db.users.find({"name":/joe/i});
+		
+	6、查询数组
+	
+		$all
+			db.food.insert({"fruit": ["apple", "banana", "peach"]});
+			db.food.find({"fruit":"banana"})：会成功匹配该文档；
+			db.food.find({fruit: {"$all": ["apple", "peach", "banana"]}})：和顺序无关，内容完全匹配；
+			
+		$size
+			db.food.find({"fruit": {"$size": 3}});
+			db.food.find({"fruit": {"$in":["apple", "peach"]}}); 类似sql中的in操作；
+			
+		slice
+			comments是blog的一个字段；
+			db.blog.posts.findOne(criteria, {"comments": {"$slice": 10}});//返回前10条评论；
+			db.blog.posts.findOne(criteria, {"comments": {"$slice": -10}});//返回后10条评论；
+			db.blog.posts.findOne(criteria, {"comments": {"$slice": [23, 10]}});//跳过前23个评论，返回之后的10个评论；
+			除非特别声明，否则使用$slice时将返回文档中的所有键；
+		
+		返回一个匹配的数组元素
+			db.blog.posts.find({"comments.name":"bob"}, {"comments.$":1});
+		
+		数组与范围查询的相互作用
+			{"x": 5}
+			{"x": 15}
+			{"x": 25}
+			{"x": [5, 25]}
+			db.test.find({"x": {"$gt":10, "$lt":20}});
+			返回：{"x": 15}
+			      {"x": [5, 25]}
+			
+			db.test.find({"x": {"$elemMatch":{"$gt":10, "$lt":20}}}), elemMatch不会匹配数组元素；
+			
+			如果当前查询的字段上创建过索引，可以使用min()、max()，将查询条件遍历的索引范围限制为$gt、$lt的值；
+			db.test.find({"x": {"$get":10, "$lt":20}}).min({"x":10}).max({"x":20});效果同上；
+			
+	7、查询内嵌文档
+		db.people.find({"name": {"first":"joe", "last":"schmoe"}});//须完全匹配，且顺序相关，不常用；
+		
+		db.people.find({"name.first":"joe", "name.last":"schmoe"}); //无须完全匹配，也不顺序相关，常用；
+		
+		查找joe发表的5分以上的评论
+		db.blog.find({"commonts.author":"joe", "comments.score":{"$gte":5}}); //这是不行的，
+			因为符合author的评论，和符合score的评论可能不是同一条评论；
+			
+		解决办法：
+			db.blog.find({"comments": {"$elemMatch": {"author":"joe", "score": {"$gte": 5}}}});
+		
+	8、where语句，无法使用索引，速度比较慢；
+		db.food.find({"$where": function(){
+			for(var current in this){
+				for(var other in this){
+					if(current != other && this[current] == this[other]){
+						return true;
+					}
+				}
+			}
+			return false;
+		}})
+	
+		排序
+			db.foo.find({"foo": "bar"}).sort({"x": 1});
+		
+	4、limit、skip、sort：db.user.find().limit(3).skip(10).sort({"age":1, "name":-1});
+	
+三、索引
+	1、db.users.find({"age":18}).explain(){
+			"cursor": "BtreeCursor age_1_username_1", //走的索引
+			"isMultiKey":false,                       //是否使用了多键索引
+			"n": 8332,                                //实际返回的文档数量
+			"nscanned0Objects": 8332,                 //扫描的文档数量
+			"nscanned": 8332,                         //扫描的索引条目
+			"nscannedObjectsAllPlans": 8332,
+			"nscannedAllPlans": 8332,
+			"scanAndOrder": false,                    //是否使用了排序
+			"indexOnly":false,                        //是否只使用索引就可以完成此次查询
+			"nYields": 0,                             //为了让写入请求更加顺利，本次查询暂停的次数
+			"nChunkSkips":0,
+			"mills": 91, //explain的时间，有可能执行了好几个explain，所以不一定时sql执行的时间；
+			...
+		}
+		
+	2、索引：db.users.ensureIndex({"userName":1});
+		
+		复合索引：db.users.ensureIndex({"age":1, "username":1});
+			1是升序，-1是降序；
+		
+	3、索引类型：
+		1、唯一索引：db.users.ensureIndex({"username": 1}, {"unique": true})；只能有一个null值；
+		2、稀疏唯一索引：db.users.ensureIndex({"username": 1}, {"unique": true, "sparse": true})；可以有多个null值，但不能有重复的非NULL值；
+		3、稀疏非唯一索引：db.users.ensureIndex({"userName":1});
+	
+	4、索引的值是按一定顺序排列的，因此，使用索引键对文档进行排序非常快；
+		单字段索引而言：排序方向并不重要，MongoDB可以在任意方向上对索引进行遍历，多字段索引，排序是很重要的；
+		复合索引，两个字段都取相反的方向，效果是一样的；
+		
+	5、$exists：无法使用索引；
+		$ne、$not、$nin：可以使用索引，但效率不高；取反的效率都不高；
+		
+		where语句中，将精确匹配的条件放前面，范围条件放后面；
+		
+		应该尽可能使用$in，而不是$or;
+		
+	6、索引管理
+		1、查看索引：db.collection.getIndexes();
+		2、设置索引名称：db.collection.ensureIndex({"age": 1}, {"name": "indexName"})
+		3、删除索引：db.collection.dropIndex("age_1_username_1");
+		
+	7、地理空间索引 GeoJSON
+		position: {"type":"Point", "coordinates": [10, 20], "desc":"..."};
+		collection: {"loc": position};
+		
+		db.collection.ensureIndex({"loc": "2dsphere"});
+		
+		db.collection.find({""lock": {"within": {"$geometry": eastVillage}}});
+	
+	8、TTL索引
+		db.foo.ensureIndex({"myDate":1}, {"expireAfterSecs":60*60*24});
+		为每一个文档设置一个超时时间，到达时间后，文档会被删掉；
+	
+四、聚合
+	db.collection.aggregate({"$project": {"author": 1}},
+		{"$group": {"_id": "author", "count": {"$sum": 1}}},
+		{"$sort": {"count": -1}},
+		{"$limit": 5});
+
+五、副本集
+	1、选举机制；
+		大多数赞成，且没有反对票，它就可以成为主节点，如果有一票反对票，就得重新选举；
+		一个反对票，等于10000张赞成票；
+		
+	2、选举仲裁者
+		只参与选举，不参与数据副本集，最多只能使用一个仲裁者；
+		缺点：2个节点，1个仲裁者，主几点挂掉后，需要加入一个新的节点，如果数据集比较大，数据同步会耗费新的主节点很大带宽、性能；
+		
+	3、同步
+		MongoDB通过使用操作日志oplog实现节点间的数据同步；
+		对于一致性要求非常高的应用程序不应该从备份节点读取数据，因为会有几毫秒的延迟；
+	
+	4、建立副本集
+		primaryDB.isMaster();//查看副本集信息；
+		rs.isMaster();
+		rs.status();
+		
+		1、启动三台服务器，副本集名称spock：
+			mongod  --replSet spock -f mongod.conf --fork;
+			
+		2、创建配置文件，并初始化：
+			config = {
+				"_id": "spock",
+				"members": [
+					{"_id":1, "host": "ip1:27017"},
+					{"_id":2, "host": "ip2:27017"},
+					{"_id":3, "host": "ip3:27017"}
+				]
+			}
+			
+			连接到ip1，rs.initiate(config);
+			ip1会解析config，并把它发送给其他成员；
+			
+			rs是一个全局变量的辅助函数；
+			
+	5、为副本集添加成员/删除成员：
+		rs.add("ip4:27017");
+		rs.remove("ip4:27017");
+		
+	6、查看副本集配置
+		rs.config();
+	
+	7、成员状态
+		STARTUP：成员刚启动；
+		STARTUP2：整个初始化同步过程处于这个状态；
+		RECOVERING：表明成员运转正常，但是暂时不能处理读取请求；
+			在启动中，成为备份节点之前，每个成员都要经历RECOVERING状态；
+			处理非常耗时的操作时，成员也可能进入RECOVERING状态；
+			当一个成员与其他成员脱节时，也会进入RECOVERING状态；
+		ARBITER：在正常的操作中，仲裁者应该始终处于ARBITER状态；
+		DOWN：如果一个正常运行的成员变的不可达，它就处于DOWN状态，可能是网络原因；
+		UNKNOWN：如果一个成员无法到达其他任何成员，其他成员就无法知道它处于什么状态，
+			就会将其报告为UNKNOWN状态；通常表明这个成员挂掉了，或者两个成员间网络问题；
+		REMOVED：当成员被移除副本集时，就处于这个状态；
+		ROLLBACK：如果成员正在进行数据回滚，就处于ROLLBACK状态；
+		FATAL：如果一个成员发生了不可挽回的错误，也不再尝试恢复正常的话，它就处于FATAL；
+	
+六、分片：配置服务器、mongos、均衡器
+	1、MongoDB支持自动分片，可以使数据库架构对应用程序不可见；
+	
+	2、配置服务器：保存着集群和分片的元数据，即各分片包含哪些数据信息；
+		鉴于配置服务器的极端重要性，必须启用其日志功能，并确保其数据保存在非易失性驱动器上；
+		每个配置服务器都应位于单独的物理机器上，最好是分布在不同地理位置的机器上；
+		
+		mongod --configsvr --dbpath /var/lib/mongodb -f /var/lib/config/mongod.conf;
+		--configsvr选项指定mongod为新的配置服务器；
+		需要3台配置服务器，如果有一台宕机了，集群元数据就会变成只读的；
+		
+		启动配置服务器时，不要使用--replSet选项，配置服务器不是副本集成员，mongos会向所有3台
+		配置服务器发送写请求，执行一个两部提交类型的操作，以确保3台服务器拥有相同的数据，所以
+		这3台服务器都必须是可写的，而在副本集中，只有主节点可以处理客户端的写请求；
+		
+	3、mongos进程，供应用程序连接使用；
+		mongos --configdb config-1:27019, config-2:27019, config-3:27019 -f /var/lib/mongos.conf，config-1/2/3是配置服务器的地址；
+		mongos进程，是供应用程序连接的，建议每个应用程序服务器启动一个mongos进程；
+		
+	4、将副本集转换成分片
+		sh.addShard("spock/server-1:27017, server-2:27017, ...")，server-1/2/3是副本集的地址，在mongos上运行此命令；
+		将副本集作为分片添加到集群后，就可以将应用程序设置从连接副本集改为连接到mongos了；
+		
+	5、增加集群容量
+		只需将新的副本集转换成分片即可；
+		
+	6、启用分片，除非明确指定规则，否则MongoDB不会自动对数据进行拆分。
+		1)、sh.enableSharding(dbName)：对数据库启用分片；
+		2)、db.users.ensureIndex({"userName": 1})：创建索引；
+		3)、db.shardCollection("test.users", {"userName": 1})：设置分片键，按userName进行分片；
+		
+	7、MongoDB如何追踪集群数据
+		MongoDB将文档分组分块，每个块由给定片键特定范围内的文档组成。一个块只存在于一个分片上，
+		所以MongoDB用一个比较小的表就能够维护块跟分片的映射；
+		插入文档，当一个块增大时，MongoDB会自动将其拆分为两个较小的块；
+		不能使用数组做为片键；
+		
+		块拆分时，只需改变配置服务器的元数据即可，无需移动文档；
+		
+		块的拆分是根据mongos收到的写请求次数来判断的，所以宕机会对块的拆分产生影响；
+		
+		如果有一台配置服务器挂了，mongos就无法更新元数据，也就无法进行块拆分，mongos就会不断地发起拆分请求，
+		这些请求会拖慢mongos和当前分片，这就是拆分风暴；
+		
+		可在启动mongos时指定--nosplit选项，从而关闭块的拆分；
+		
+		块的默认大小64M；
+		
+		db.settings.save({"_id":"chunksize", "value":32});改变块大小；
+		
+	8、均衡器
+		均衡器负责数据的迁移，尽可能的保证每个分片拥有均衡的数据量；每隔几秒钟，mongos就会尝试变身为均衡器，
+			如果没有其他可用的均衡器，mongos会对整个集群加锁，以防止配置服务器对集群进行修改，
+			然后做一次均衡，即迁移块多的分片到块不多分片中；均衡器并不会影响mongos的正常路由，
+			所以使用mongos的客户端不会受到影响；
+		
+		使用集群的应用程序无需知道数据迁移：在数据迁移完成之前，所有的读写请求都会被路由到旧的块上，
+			如果元数据更新完成，那么所有试图访问旧位置数据的mongos进程都会得到一个错误，但这些错误
+			对客户端不可见，mongos会静默处理；
+		
+		关闭均衡器：sh.setBalanceState(false);
+			在执行几乎所有的数据库管理操作之前，都应先关闭均衡器；一般不能立即终止进行中的均衡过程
+			db.locks.find({"_id": "balance"})["state"];如果为0，表示已关闭；
+			
+		均衡过程可能对系统造成负载，可设置时间窗口
+			db.settings.update({"_id":"balancer"}, {"$set": {"activieWindow": {"start": "13:00", "stop":"16:00"}}}, true);
+			在13点到16点时均衡；
+		
+	9、选择片键
+		1、散列片键 hash
+			速度快，但不能范围查询，不能unique索引；不能用数组片键；浮点数会去掉小数取整后进行散列；
+			db.users.ensureIndex({"userName": "hashed"});
+			db.shardCollection("test.users", {"userName": "hash"});
+			
+		2、片键限制
+			大多数索引都不能用作片键，散列索引除外；文档一旦插入，就不能改变片键了；
+			
+	10、sh.status()查看集群摘要信息；
+	
+	11、一个mongos最多允许20000个连接，mongod一样；
+	
+	12、手动刷新配置：db.adminCommand({"flushRouterConfig": 1});
+
+七、了解应用动态：mongotop、mongostat;
+
+八、身份验证
+	admin(管理员)和local(本地)，他们当中的用户可以对任何数据库进行操作；可以被看做超级用户；
+	已开启安全检查的数据库在被启动前，应至少添加一个管理员用户。--auth
+	
+	use questiondb;
+	db.createUser(
+	  {
+		user:"dbUser",
+		pwd:"fdsaojfdsa",
+		roles:[
+		  {role:"read",db:"db01"},
+		  {role:"readWrite",db:"db02"},
+		  {role:"read",db:"db03"}
+		]
+	  }
+	)
+		
+	use admin;
+	db.createUser(
+	  {
+		user: "myUserAdmin",
+		pwd: "abc123",
+		roles: [ { role: "userAdminAnyDatabase", db: "admin" } ]
+	  }
+	)
+	
+	登录
+	mongo --host xxx -u userName -p password --authenticationDatabase dbname
+
+	查看当前用户的权限
+	db.runCommand(
+	  {
+		usersInfo:"userName",
+		showPrivileges:true
+	  }
+	)
+	
+	在admin数据库中建立用户前，服务器上的本地客户端可对数据库进行读写；
+	
+	分片时，数据库admin会被保存在配置服务器上，所以分片中的mongod甚至并不知道它的存在。因此，
+	在它们看来，它们虽然开启了身份验证但却不存在管理员用户。于是，分片中会允许一个本地的客户端
+	无需身份验证便可读写数据；
+	
+MongoDB优化
+	1、修改器的速度
+		将文档插入到MongoDB时，依次插入的文档在磁盘上的位置是相邻的。因此，如果一个文档变大了，原先的位置就放不下这个文档了，
+			这个文档就会被移动到集合中的另一个位置，这种移动性能会很低；
+			
+	2、填充因子：MongoDB为每个新文档预留的增长空间，可以通过db.coll.stats()查看；
+		
+	3、避免不稳定的文档大小，改变内容时，容易导致移动文档；
+		避免skip大量的结果，性能差；
+		
+MongoDB不适合的场景：1、不支持事务；2、关联查询；
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

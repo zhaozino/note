@@ -1,0 +1,112 @@
+
+3种类加载器：
+	启动类加载器(Bootstrap ClassLoader)：负责加载 JAVA_HOME\lib 目录中的，或通过-Xbootclasspath参数指定路径中的，且被虚拟机认可（按文件名识别，如rt.jar）的类。
+	扩展类加载器(Extension ClassLoader)：负责加载 JAVA_HOME\lib\ext 目录中的，或通过java.ext.dirs系统变量指定路径中的类库。
+	应用程序类加载器(Application ClassLoader)：负责加载用户路径（classpath）上的类库。
+
+	当然我们也可以通过继承java.lang.ClassLoader实现自定义的类加载器。重写findClass
+
+双亲委派：
+	当一个类加载器收到类加载任务，会先交给其父类加载器去完成，因此最终加载任务都会传递到顶层的启动类加载器，只有当父类加载器无法完成加载任务时，才会尝试自己执行加载任务。
+	采用双亲委派的一个好处是比如加载位于rt.jar包中的类java.lang.Object，不管是哪个加载器加载这个类，最终都是委托给顶层的启动类加载器进行加载，这样就保证了使用不同的类加载器最终得到的都是同样一个Object对象。
+
+	系统类防止内存中出现多份同样的字节码，保证Java程序安全稳定运行；
+	
+类加载过程：加载、验证、准备、解析、初始化五个阶段。
+	加载：查找并加载类的二进制数据；
+	验证：确保Class文件的字节流中包含的信息符合当前虚拟机的要求，并且不会危害虚拟机自身的安全；
+	准备：为类的静态变量分配内存，并将其初始化为默认值；
+	解析：虚拟机将常量池内的符号引用替换为直接引用的过程；
+	初始化：为类的静态变量赋予正确的初始值；
+	
+类加载有三种方式：
+	1、命令行启动应用时候由JVM初始化加载；
+	2、通过Class.forName()方法动态加载；
+	3、通过ClassLoader.loadClass()方法动态加载；
+	
+Class.forName()和ClassLoader.loadClass()区别
+	Class.forName()：将类的.class文件加载到jvm中之外，还会对类进行解释，执行类中的static块；
+	ClassLoader.loadClass()：只干一件事情，就是将.class文件加载到jvm中，不会执行static中的内容,只有在newInstance才会去执行static块。
+	注：
+	Class.forName(name, initialize, loader)带参函数也可控制是否加载static块。并且只有调用了newInstance()方法采用调用构造函数，创建类的对象 。
+	
+如何避免死锁
+	1、顺序性枷锁；2、设置锁的超时时间；3、死锁检测；
+	
+锁的优化
+	1、减少锁持有的时间；2、减小锁的粒度；3、读写分离/锁分离；4、锁的粗化；
+	
+redis6种数据淘汰策略
+	noeviction: 不删除策略, 达到最大内存限制时, 如果需要更多内存, 直接返回错误信息。 大多数写命令都会导致占用更多的内存(有极少数会例外, 如 DEL )。
+	allkeys-lru: 所有key通用; 优先删除最近最少使用(less recently used ,LRU) 的 key。
+	volatile-lru: 只限于设置了 expire 的部分; 优先删除最近最少使用(less recently used ,LRU) 的 key。
+	allkeys-random: 所有key通用; 随机删除一部分 key。
+	volatile-random: 只限于设置了 expire 的部分; 随机删除一部分 key。
+	volatile-ttl: 只限于设置了 expire 的部分; 优先删除剩余时间(time to live,TTL) 短的key。
+
+Redis的并发竞争问题
+	incr命令、乐观锁、分布式锁、setnx；
+	
+序列化协议
+	xml、json、thrift、avro、protobuf；
+	
+零拷贝
+	Zero-copy, 就是在操作数据时, 不需要将数据 buffer 从一个内存区域拷贝到另一个内存区域. 因为少了一次内存的拷贝, 因此 CPU 的效率就得到的提升。
+	在 OS 层面上的 Zero-copy 通常指避免在 用户态(User-space) 与 内核态(Kernel-space) 之间来回拷贝数据。
+	但Netty 中的 Zero-copy 与 OS 的 Zero-copy 不太一样, Netty的 Zero-coyp 完全是在用户态(Java 层面)的, 它的 Zero-copy 的更多的是偏向于 优化数据操作。
+	
+	1.Netty的接收和发送ByteBuffer采用DIRECT BUFFERS，使用堆外直接内存进行Socket读写，不需要进行字节缓冲区的二次拷贝。如果使用传统的堆内存（HEAP BUFFERS）进行Socket读写，
+		JVM会将堆内存Buffer拷贝一份到直接内存中，然后才写入Socket中。相比于堆外直接内存，消息在发送过程中多了一次缓冲区的内存拷贝。
+	2.Netty 提供了 CompositeByteBuf 类, 它可以将多个 ByteBuf 合并为一个逻辑上的 ByteBuf, 避免了传统通过内存拷贝的方式将几个小Buffer合并成一个大的Buffer。
+	3.通过 FileRegion 包装的FileChannel.tranferTo方法 实现文件传输, 可以直接将文件缓冲区的数据发送到目标 Channel，避免了传统通过循环write方式导致的内存拷贝问题。
+	4.通过 wrap 操作, 我们可以将 byte[] 数组、ByteBuf、ByteBuffer等包装成一个 Netty ByteBuf 对象, 进而避免了拷贝操作。
+	
+HTTP2.0
+	HTTP/2采用二进制格式而非文本格式
+	HTTP/2是完全多路复用的，而非有序并阻塞的——只需一个连接即可实现并行
+	使用报头压缩，HTTP/2降低了开销
+	HTTP/2让服务器可以将响应主动“推送”到客户端缓存中
+	
+Dubbo SPI IOC：injectExtension
+	ExtensionLoader有三个实现：
+	1. SpiExtensionLoader：Dubbo自己的Spi去加载Extension
+	2. SpringExtensionLoader：从Spring容器中去加载Extension
+	3. AdaptiveExtensionLoader: 自适应的AdaptiveExtensionLoader
+	
+Dubbo SPI AOP
+	ProtocolFilterWrapper、ProtocolListenerWrapper	
+	ProtocolFilterWrapper > ProtocolListenerWrapper > RegistryProtocol
+	
+Dubbo SPI Adaptive
+	ExtensionLoader<AdaptiveExt2> loader = ExtensionLoader.getExtensionLoader(AdaptiveExt2.class);
+	AdaptiveExt2 adaptiveExtension = loader.getAdaptiveExtension();
+	URL url = URL.valueOf("test://localhost/test");
+	System.out.println(adaptiveExtension.echo("d", url));
+	
+	1. 在类上加上@Adaptive注解的类，是最为明确的创建对应类型Adaptive类。所以他优先级最高。
+	2. @SPI注解中的value是默认值，如果通过URL获取不到关于取哪个类作为Adaptive类的话，就使用这个默认值，当然如果URL中可以获取到，就用URL中的。
+	3. 可以再方法上增加@Adaptive注解，注解中的value与链接中的参数的key一致，链接中的key对应的value就是spi中的name,获取相应的实现类。
+
+Dubbo SPI Activate
+	ExtensionLoader<ActivateExt1> loader = ExtensionLoader.getExtensionLoader(ActivateExt1.class);
+	URL url = URL.valueOf("test://localhost/test");
+	//查询组为default_group的ActivateExt1的实现
+	List<ActivateExt1> list = loader.getActivateExtension(url, new String[]{}, "default_group");
+	
+	1. 根据loader.getActivateExtension中的group和搜索到此类型的实例进行比较，如果group能匹配到，就是我们选择的，也就是在此条件下需要激活的。
+	2. @Activate中的value是参数是第二层过滤参数（第一层是通过group），在group校验通过的前提下，如果URL中的参数（k）与值（v）中的参数名同@Activate中的value值一致或者包含，
+		那么才会被选中。相当于加入了value后，条件更为苛刻点，需要URL中有此参数并且，参数必须有值。
+	3.@Activate的order参数对于同一个类型的多个扩展来说，order值越小，优先级越高。
+
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

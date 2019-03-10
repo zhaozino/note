@@ -1,0 +1,132 @@
+﻿
+1、write-ahead log，也称HLog；
+2、MemStore；
+HBase的默认方式是把写入动作记录在这两个地方，以保证数据持久化。只有当这两个地方的变化信息都写入并确认后，才认为写动作完成；
+
+MemStore是内存里的写入缓冲区，HBase中数据在永久写入硬盘之前在这里积累。当MemStore填满后，其中的数据会刷写到硬盘，生成一个HFile。
+	HFile是HBase使用的底层存储格式。HFile对应于列族，一个列族可以有多个HFile，但一个HFile不能存储多个列族的数据。在集群的每个节点
+	上，每个列族有一个MemStore。
+	
+每台HBase服务器有一个WAL，这台服务器上的所有表（和它们的列族）共享这个WAL。
+
+HBase读动作必须重新衔接持久化到硬盘上的HFile和内存中MemStore里的数据。HBase在读操作上使用了LRU（最近最少使用算法）缓存技术；这种
+	缓存也叫BlockCache，和MemStore在一个JVM堆里；每个列族都有自己的BlockCache。
+
+BlockCache中的Block是HBase从硬盘完成一次读取的数据单位。HFile物理存放形式是一个Block的序列外加这些Block的索引。这意味着，从HBase里
+	读取一个Block需要先在索引上查找一次该Block然后从硬盘读出。Block是建立索引的最小数据单位，也是从硬盘读取的最小数据单位。Block大小
+	按照列族设定，默认值是64KB。根据使用场景你可能会调大或调小该值。如果主要用于随机查询，你可能需要细粒度的Block索引，小一点的Block
+	更好一些。Block变小会导致索引变大，进而消耗更多内存。如果你经常执行顺序扫描，一次读取多个Block，大一点的Block更好一些。Block变大
+	意味着索引项变少，索引变小，因此节省内存。
+
+从HBase中读取一行，首先会检查MemStore等待修改的队列，然后检查BlockCache看包含该行的Block是否最近被访问过，最后访问硬盘上的对应HFile。
+
+Delete命令并不立即删除内容，实际上，它只是给记录打上删除的标记。就是说，针对那个内容的一条新“墓碑”记录写入进来，作为删除的标记。墓碑记录
+	用来标志删除的内容不能再Get和Scan命令中返回结果。因为HFile文件是不能改变的，直到执行一次大合并，这些墓碑记录才会被处理，被删除记录
+	占用的空间才会释放。
+
+合并分为两种：大合并、小合并。两者将会重整存储在HFile里的数据。小合并把多个小HFile合并生成一个大HFile。因为读出一条完整的行可能引用很多
+	文件，限制HFile的数量对于读性能很重要。执行合并时，HBase读出已有的多个HFile的内容，把记录写入一个新文件。然后，把新文件设置为激活状态，
+	删除构成这个新文件的老文件。HBase根据文件的号码和大小决定合并哪些文件。小合并设计出发点是轻微影响HBase的性能，所以涉及的HFile的数量
+	有上限，这些都可以设置。
+	
+大合并将处理给定region的一个列族的所有HFile。大合并完成后，这个列族的所有HFile合并成一个文件。可以从Shell中手工触发整个表（或者特定region）
+	的大合并。这个动作相当耗费资源，不要经常使用。另一方面，小合并是轻量级的，可以频繁发生。大合并是HBase清理被删除记录的唯一机会。因为我们
+	不能保证被删除的记录和墓碑标记记录在一个HFile里面。大合并是唯一的机会，HBase可以确保同时访问到两种记录。
+
+ResultScanner.next(int)
+	
+Get、Put、Delete、Scan、Increment。
+
+RegionServer和HDFS DataNode典型情况下并列配置在同一物理硬件上，虽说这不是必需的。RegionServer本质上是HDFS客户端，在上面存储/访问数据。
+	主（master）进程分配region给RegionServer，每个RegionServer一般托管多个region；
+	
+HBase中有两个特殊的表，-ROOT-和.META.，用来查找各种表的region位置在哪里。-ROOT-和.META.像HBase中其他表一样也会切分成region。-ROOT-和
+	.META.都是特殊的表，但-ROOT-比.META.更特殊一些，-ROOT-永远不会切分超过一个region。META.和其他表一样可以按需要切分成许多region。
+
+当客户端应用要访问某行时，它先找-ROOT-表，查找什么地方可以找到负责某行的region。-ROOT-指向.META.表的region，那里有这个问题的答案。
+	.META.表由入口地址组成，客户端应用使用这个入口地址判断哪一个RegionServer托管待查找的region。从zookeeper中可以查到-ROOT-表在哪个
+	RegionServer上。
+	
+布隆过滤器
+	数据块索引提供了一种有效的方法，在访问一个特定的行时用来查找应该读取的HFile的数据块，但它的效用很有限；
+布隆过滤器允许对存储在数据块的数据做一个反向测试。当某行被请求时，先检查布隆过滤器，看看该行是否不在这个数据块中。布隆过滤器要么确定
+	回答该行不在，要么回答它不知道。布隆过滤器也可以应用到行中的单元上。当访问某列限定符时先使用同样的反向测试。
+布隆过滤器也不是没有代价的。存储这个额外的索引层会占用额外的空间。布隆过滤器随着它们索引的对象数据增长而增长，所以行级布隆过滤器比限定符
+	级布隆过滤器占用空间要少。当空间不是问题时，它们可以帮助你榨干系统的性能潜力。
+	
+预装过滤器
+	1、行过滤器：RowFilter
+		基于行键执行精确匹配、子字符串匹配、正则表达式匹配，过滤掉不匹配的数据。
+		
+	2、前缀过滤器：PrefixFilter
+		这是RowFilter的一种特例。它是基于行健的前缀值进行过滤。
+	
+	3、限定符过滤器：QualifierFilter
+		类似RowFilter，不同之处是它用来匹配列限定符而不是行健。
+		
+	4、值过滤器：ValueFilter
+		针对的是单元值过滤。
+		
+	5、时间戳过滤器：TimestampsFilter
+		针对返回给客户端的时间版本进行更细粒度的控制；
+		
+协处理器：observer、endpoint
+	你可以使用定制过滤器把应用逻辑推到集群上，但是过滤器被局限在单行的内容上。为了在HBase里执行行数据上的计算，你被迫依靠Hadoop MapReduce
+		或者依靠客户端代码来读取、修改和写回数据到HBase。
+	随着协处理器的引入，我们可以把任意计算逻辑推到托管数据的HBase节点上。这种代码跨越所有RegionServer并行运行。这个特性把HBase集群
+		从水平扩展存储系统转变为高效的、分布式的数据存储和数据处理系统。类似于数据库的存储过程。
+		
+observer：位于客户端和HBase之间，在这个过程发生时修改数据访问。你可以在每个Get命令后运行一个observer，修改返回给客户端的结果。
+	
+RegionObserver：这种observer钩在数据访问和操作阶段。所有标准的数据操作命令都可以被pre-hooks和post-hooks拦截。它也对region内部
+	操作开放pre-hooks和post-hooks，例如，刷写MemStore和拆分region。RegionObserver运行在region上，因此同一个RegionServer上可以运行多个
+	RegionObserver。
+	
+WALObserver：预写日志也支持observer卸处理器。唯一可用的钩子是pre-WAL和post-WAL写事件。和RegionObserver不同，WALObserver运行在RegionServer
+	的环境里。
+	
+MasterObserver：为了钩住DDL事件，如表的创建或模式修改，HBase提供了MasterObserver，这种observer运行在Master节点上。
+
+endpoint协处理器：endpoint是HBase的一种通用扩展。当endpoint安装在集群上时，它扩展了HBase RPC协议，对客户端应用开放了新方法。就像observer，
+	endpoint在RegionServer上执行，紧挨着你的数据。类似于存储过程，从客户端看，调用一个endpoint协处理器类似调用其他HBase命令，只是其功能
+	建立在定义协处理器的定制代码上。通常先创建请求对象，然后把它传给HtableInterface在集群上执行，最后收集结果。
+	
+	最基本的是，endpoint可以用来实现分散聚合算法。AggregateImplementation实例在托管数据的节点上计算得到部分结果，然后AggregationClient
+	在客户端进程里计算得到最终结果。重点，在客户端聚合；
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

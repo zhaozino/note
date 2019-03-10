@@ -1,0 +1,286 @@
+
+***********************************************************************
+
+安装docker
+	yum install -y docker
+	
+镜像
+	docker运行容器前，需要本地存在对应的镜像；
+	
+	获取镜像
+		docker pull name:tag; //不选择tag会选latest版本的；
+		docker pull centos:7.2
+		docker pull centos;
+		
+	查看镜像信息
+		docker images; //列出本地镜像
+		docker inspect imageId; //查看镜像详细信息
+		
+	搜索镜像
+		docker search mysql; //默认搜索Docker Hub官方仓库中的镜像；
+		
+	删除镜像
+		docker rmi imageName; //imageName或为tag或为ID
+		
+		当同一个镜像拥有多个标签的时候，docker rmi只是删除了指定的标签，并不影响镜像文件；
+	
+	查看本机所有的容器
+		docker ps -a;
+		
+	当镜像创建的容器存在时，镜像文件默认是无法被删除的；-f 可以强制删除；
+	
+	创建镜像
+		docker commit -a 作者信息 -m 提交信息 -p 提交时暂停容器运行 containerId repositoryName; //返回新的镜像ID
+		
+	存出镜像
+		docker save -o centos7.tar centos7; //存出镜像为centos7.tar
+		
+	载入镜像
+		docker load --input centos7.tar;
+		
+	上传镜像
+		docker push centos:mylatest
+		
+容器
+	创建容器
+		docker create -it centos:latest; //创建容器
+		docker start containerId; //启动容器
+	
+	创建并启动
+		docker run centos /bin/echo 'hello world';
+		docker run -it centos /bin/bash;
+		
+	守护状态运行
+		docker run -d centos /bin/bash;
+	
+	查看本机所有的容器
+		docker ps -a/-l;
+		
+	获取容器的输出
+		docker logs;
+		
+	终止/启动容器
+		docker stop/start containName;
+		
+	进入容器
+		docker exec -it containName /bin/bash
+		
+	删除容器
+		docker rm containName;
+		
+	导出容器
+		docker export containName centos.tar; //迁移到其他机器上运行；
+		
+	导入容器
+		docker import centos.tar;
+		
+	导入容器快照将丢弃所有的历史记录和元数据信息（即仅保存容器当时的快照状态）；
+	而镜像存储文件将保存完整记录，体积也要大，此外，从容器快照文件导入时可以重新制定标签等元数据信息；
+	
+仓库
+	docker Hub；
+	
+数据管理
+	数据卷
+		一个可供容器使用的特殊目录，它绕过文件系统，可以提供很多有用的特性；
+			1、在容器间共享和重用；
+			2、对数据卷的修改会立马生效；
+			3、对数据卷的更新，不会影响镜像；
+			4、卷会一直存在，直到没有容器使用；
+			
+	容器内创建一个数据卷：-v
+		docker run -d -P --name web -v /webapp containerName /bin/bash //挂载一个默认目录到容器的/webapp目录；
+		-P：允许外部访问容器需要暴漏的端口；
+		
+		docker run -d -P --name web -v /src/webapp:/opt/webapp containName /bin/bash //挂载/src/webapp目录到容器的/opt/webapp目录下；
+		
+		docker挂载的数据卷默认权限是读写rw，ro可以指定为只读；
+			docker run -d -P --name web -v /src/webapp:/opt/webapp:ro containName /bin/bash
+			
+		挂载一个文件（非文件夹）作为数据卷
+			docker run --rm -it -v ~/.bash_history:/.bash_history containName /bin/bash
+			
+	数据卷容器
+		如果用户需要在容器之间共享一些持续更新的数据，最简单的方式是使用数据卷容器。数据卷容器其实就是一个普通的容器，专门用它提供数据卷
+		供其他容器挂载使用；
+		
+		docker run -it -v /dbdata --name dbdata containName; //创建数据卷容器dbdata
+		
+		docker run -it --volumes-from dbdata --name db1 containName; //--volumes-from挂载dbdata容器；
+		docker run -it --volumes-from dbdata --name db2 containName; //db1、db2都挂载同一个数据卷容器到相同的/dbdata目录
+		
+		如果要删除一个数据卷，必须在删除最后一个还挂载着它的容器时显式使用docker rm -v命令来指定同时删除关联的容器；
+		
+		备份
+			docker run --volumes-from dbdata -v $(pwd):/backup --name worker centos tar cvf /backup/backup.tar /dbdata
+			首先用centos镜像创建了一个容器worker，使用--volumes-from dbdata参数来让worker容器挂载dbdata容器的数据卷(即dbdata数据卷);
+			使用-v $(pwd):/backup参数来挂载本地的当前目录到worker容器的/backup目录；
+			
+			worker容器启动后，使用了tar cvf /backup/backup.tar /dbdata命令来将/dbdata下内容备份为容器内的/backup/backup.tar，即
+			宿主主机当前目录下的backup.tar;
+			
+		恢复
+			docker run -v /dbdata --name dbdata2 centos /bin/bash
+			首先创建一个带有数据卷的容器dbdata2，然后创建另一个新的容器，挂载dbdata2的容器，并使用untar解压备份文件到所挂载的容器卷中即可；
+			docker run --volumes-from dbdata2 -v $(pwd):/backup busybox tar xvf /backup/backup.tar
+			
+网络基础配置
+	容器间的网络通信
+	
+	从外部访问容器应用
+		docker run -d -P tranining/webapp /bin/bash //docker会随机映射一个49000 - 49900的端口至容器内部开放的网络端口；
+		
+		-p则可以指定要映射的端口，并且在一个指定端口上只可以绑定一个容器；
+			ip:hostPort:containerPort | ip::containerPort | hostPort:containerPort;
+		
+		映射所有接口地址
+			docker run -d -p 5000:5000 -p 3000:80 training/webapp /bin/bash;
+			
+		映射到指定地址的任意端口
+			docker run -d -p 127.0.0.1::5000 training/webapp /bin/bash; //绑定localhost的任意端口到容器的5000端口，本地主机会自动分配一个端口；
+			
+		还可以使用udp标记来指定udp端口
+			docker run -d -p 127.0.0.1:5000:5000/udp training/webapp /bin/bash;
+			
+		查看映射端口配置
+			docker port nostalgic_morse 5000; //docker port
+			
+	容器互联实现容器通信
+		连接系统依据容器的名称来执行；
+		自定义容器名 --name
+			docker run -d -P --name web training/webapp /bin/bash
+			
+		docker inspect -f "{{.Name}}";  //查看容器名docker inspect;
+		
+		docker run -d --name db training/webapp;
+		docker run -d -P --name web --link db:db training/webapp /bin/bash; //--link连接两个容器，--link name:alias，允许web访问db；不需要端口映射；
+		
+构建docker容器集群
+	docker默认的网桥是docker0；
+	
+	1、定义网桥br0，编辑/etc/network/interface文件
+		auto br0
+		iface br0 inet static
+		address 192.168.7.31
+		netmask 255.255.240.0
+		gateway 192.168.7.254
+		bridge_ports em1
+		bridge_stp off
+		dns-nameservers 8.8.8.8 192.168.6.1
+		
+		重启后，默认将本地物理网卡em1连接到了br0上；
+		
+	2、修改/etc/default/docker文件，添加如下内容
+		DOCKER_OPTS="-b=br0"
+		在启动docker的时候使用-b参数可以将容器绑定到指定网桥br0上；
+		这样的情况下，容器端口通过映射直接暴露到物理网络上，多台物理主机的容器通过访问外部映射端口即可互相互联网了。
+		这样实现的主要问题是需要知道容器所在物理主机的IP地址；
+		
+	使用Ambassador容器
+		当两个docker容器在同一主机时，可以通过--link命令让两者直接互相访问。如果要跨主机实现容器互联，则往往需要容器知道其他物理
+		主机的ip地址。利用Ambassador容器机制，可以让互联的容器无需知道所在的物理主机的ip地址即可互联；
+		
+		Ambassador容器也是一种docker容器，它在内部提供了转发功能；
+		当客户端容器要访问服务器端容器的时候，直接访问客户端Ambassador容器；这个请求会被客户端Ambassador转发出去，到达服务端主机；
+		服务端Ambassador容器监听在对应端口上，收到请求后再转发请求给服务端容器；
+		
+		1、首先在服务端主机上创建redis容器；
+			docker run -d -name redis-server crosbymichael/redis;
+			
+		2、创建一个服务端Ambassador容器redis_ambassador，连接到服务端容器redis-server，并监听本地的6379端口；
+			docker run -d -link redis-server:redis -name redis_ambassador -p 6379:6379 svendowideit/ambassador;
+			
+		3、在客户端主机上创建客户端Ambassador容器，告诉它服务端物理主机的监听地址是tcp://x.x.x.x:6379，将本地
+			收集到6379端口的流量转发到服务端物理主机；
+			docker run -d -name redis_ambassador -expose 6379 -e REDIS_PORT_6379_TCP=tcp://x.x.x.x:6379 svendowideit/ambassador;
+			
+		4、创建一个客户端容器，进行测试，默认访问6379端口实际上是访问的服务端容器内的redis应用；
+			docker run -it -rm -link redis_ambassador:redis relateiq/redis-cliredis 172.17.0.160:6379 > ping;
+			
+高级网络配置
+	docker四种网络模型介绍
+		1.1 host模式
+			众所周知，Docker使用了Linux的Namespaces技术来进行资源隔离，如PID Namespace隔离进程，Mount Namespace隔离文件系统，Network Namespace隔离网络等。
+			一个Network Namespace提供了一份独立的网络环境，包括网卡、路由、Iptable规则等都与其他的Network Namespace隔离。一个Docker容器一般会分配一个
+			独立的Network Namespace。但如果启动容器的时候使用host模式，那么这个容器将不会获得一个独立的Network Namespace，而是和宿主机共用一个Network Namespace。
+			容器将不会虚拟出自己的网卡，配置自己的IP等，而是使用宿主机的IP和端口。
+				例如，我们在10.10.101.105/24的机器上用host模式启动一个含有web应用的Docker容器，监听tcp80端口。当我们在容器中执行任何类似ifconfig命令查看网络环境时，
+				看到的都是宿主机上的信息。而外界访问容器中的应用，则直接使用10.10.101.105:80即可，不用任何NAT转换，就如直接跑在宿主机中一样。但是，容器的其他方面，
+				如文件系统、进程列表等还是和宿主机隔离的。
+		
+		1.2 container模式
+			在理解了host模式后，这个模式也就好理解了。这个模式指定新创建的容器和已经存在的一个容器共享一个Network Namespace，而不是和宿主机共享。
+			新创建的容器不会创建自己的网卡，配置自己的IP，而是和一个指定的容器共享IP、端口范围等。同样，两个容器除了网络方面，其他的如文件系统、进程列表等还是隔离的。
+			两个容器的进程可以通过lo网卡设备通信。
+		
+		1.3 none模式
+			这个模式和前两个不同。在这种模式下，Docker容器拥有自己的Network Namespace，但是，并不为Docker容器进行任何网络配置。也就是说，
+			这个Docker容器没有网卡、IP、路由等信息。需要我们自己为Docker容器添加网卡、配置IP等。
+		
+		1.4 bridge模式
+			bridge模式是Docker默认的网络设置，此模式会为每一个容器分配Network Namespace、设置IP等，并将一个主机上的Docker容器连接到一个虚拟网桥上。
+		
+*******************************************************************************************************************************************************
+
+目标：docker集群；
+
+问题：
+	1、docker跨主机通信；
+	2、docker实时监控问题；
+	3、docker服务注册发现高可用问题etcd；
+	4、编排；
+	5、
+		
+		
+		
+		
+	
+		
+	
+		
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

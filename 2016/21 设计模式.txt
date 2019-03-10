@@ -1,0 +1,203 @@
+
+1整体架构设计
+2业务领域抽象、建模
+3服务规划与层次划分
+4服务内流程、数据、契约（接口）定义和技术选型。
+
+***********************************************************************
+
+设计模式
+
+依赖：局部变量、方法参数、静态方法调用；
+关联/聚合：属性；
+
+泛化：继承，实线 + 三角箭头；
+实现：虚线 + 三角箭头；
+关联：实线 + 箭头；
+依赖：虚线 + 箭头；
+聚合：实线 + 空心菱形箭头 + 箭头；
+组合：实线 + 实心菱形箭头 + 箭头；
+
+开闭原则；
+
+设计模式的六大原则：
+	李氏替换原则：任何基类出现的地方，子类一定可以出现；
+	依赖倒转原则：依赖于抽象，不要依赖实现；
+	迪米特法则：一个对象对其他对象应当尽可能少的了解；限制软件实体通信的广度和深度；
+	接口隔离原则：使用多个专门的接口，比使用单一的总接口要好；限制软件实体通信的广度；
+	开闭原则：对扩展开放，对修改关闭，在不修改的情况下可以方便扩展；
+	合成复用原则：尽量使用合成/聚合，不要使用继承；
+
+创建模式
+简单工厂模式、工厂方法、抽象工厂模式、原型模式、建造者模式、单例模式；
+
+结构模式
+门面模式、代理模式、装饰者模式、适配器模式、组合模式、享元模式、桥接模式；
+
+行为模式
+模板模式、观察者模式、策略模式、备忘录模式、职责链模式、命令模式、状态模式、中介者模式、解释器模式、访问者模式；
+
+简单工厂模式：DateFormat.getDateInstance();
+工厂方法模式：Collection.iterator();
+单例模式：Runtime.getRuntime();
+代理模式：反射、动态代理、advice；
+桥梁模式：JDBC驱动器；
+模板模式：HttpServlet的service方法，调用1个或7个do方法；
+观察者模式：observer、observable;
+建造者模式：java mail
+
+
+介绍几种你比较熟悉的设计模式，以及在项目中的应用，描述下它们的优缺点：
+	适配器模式、门面模式、代理模式、装饰者模式、模板模式、策略模式、工厂模式、单例模式、迭代子、访问者、享元模式
+	
+1、适配器模式
+	角色：Target（目标接口）、Adaptee（源角色）、Adapter（适配器）；
+	适配器模式把一个类的接口变换成客户端所期待的另一种接口，从而使原本因接口不匹配而无法在一起工作的两个类能够在一起工作；
+	
+2、状态模式
+	角色：context、state、stateA、stateB；
+	context(state、+request)、state(+handle(context));
+	当一个对象的内在状态改变时允许改变其行为，这个对象看起来像是改变了其类；
+		主要解决的是当控制一个对象状态转换的条件表达式过于复杂时的情况。把状态的判断逻辑转移到表示不同的一系列类当中，可以把复杂的逻辑判断简单化；
+	
+3、门面模式
+	外部与一个复杂子系统的通信通过一个统一的门面对象进行；
+	
+4、模板模式
+	定义一个操作中的算法的骨架，而将步骤延迟到子类中。模板方法使得子类可以不改变一个算法的结构即可重定义算法的某些特定步骤；
+
+5、简单工厂模式/工厂方法模式/抽象工厂模式；
+	抽象工厂（日系工厂/美系工厂 —— 车：两厢车/三厢车 —— 日系两厢车/日系三厢车、美系两厢车/美系三厢车）;
+
+6、单例模式；
+	确保某个类只有一个实例，自行实例化并向整个系统提供这个实例；
+	
+7、迭代子
+	角色：Iterator（抽象迭代子）、ConcreteIterator（迭代子）、聚集角色（Aggregate）、具体聚集角色（ConcreteAggregate）;
+	Iterator(ConcreteIterator、+next())、Aggregate(+iterator());
+	可以顺序地访问一个聚集中的元素而不必暴露聚集的内部表象；
+	
+8、访问者
+	角色：Visitor、VisitorA、VisitorB、Node、NodeA、NodeB、ObjectStrcture、client；
+	Visitor(+visite(NodeA)、+visite(NodeB))、Node(+accept(Visitor));
+	当系统中存在一个较为复杂的对象结构，且不同访问者对其所采取的操作也不相同时，可以考虑使用访问者模式进行设计。
+	
+9、享元模式
+	共享池；
+	
+10、原型模式
+	克隆；
+	
+11、建造者模式
+	角色：Builder（抽象建造者）、ConcreteBuilder（具体建造者）、Director（导演者）、Product（产品）;
+	Builder(+buildPart1()、+buildPart2()、+retrieveResult:product)、Director(Builder、+construct());
+	将一个复杂的构建与其表示相分离，使得同样的构建过程可以创建不同的表示。 [构建与表示分离，同构建不同表示]
+	
+12、代理模式
+	角色：subject、ProxySubject、RealSubject;
+	subject(+request())、ProxySubject(RealSubject、request()、+preRequest()、+postRequest())、RealSubject(+request());
+	给某一个对象提供一个代理对象，并由代理对象控制对原对象的引用。
+	反射、动态代理；
+	
+13、装饰者模式
+	角色：Component（抽象构件）、ConcreteComponent（具体构件）、Decorator（装饰者模式）、ConcreteDecorator（具体装饰者模式）;
+	Component(+sampleOperation())、Decorator(Component、+sampleOperation());
+	装饰模式以对客户透明的方式动态地给一个对象附加上更多的责任；
+	装饰模式的关键在于这种扩展是完全透明的，StringBuffer。
+	
+14、组合模式
+	角色：Component（抽象节点）、Composite（子节点）、Leaf（叶子节点）
+	Component(Composite、+sampleOperation())、Composite(Vector<Component>、+sampleOperation()、+add/remove())、Leaf(+sampleOperation());
+	
+15、桥接模式
+	角色：抽象化角色（Abstraction）、修正抽象化角色（Refined Abstraction）、实现化角色（Implementor）、具体实现化角色（Concrete Implementor）;
+	Abstraction(Implementor、+operation())、Implementor(+operationImpl());
+	将抽象化与实现化脱藕，使得二者可以独立地变化；
+	
+16、观察者模式
+	角色：Subject（抽象主题）、ConcreteSubject（具体主题）、Observer（抽象观察者）、ConcreteObserver（具体观察者）；
+	Subject(Vector<Observer>、+notify()、+add(Observer)、+remove(Observer)); Observer(+update());
+	观察者模式可以实现表示层和数据逻辑层的分离；
+	有时被称作发布/订阅模式，观察者模式定义了一种一对多的依赖关系，让多个观察者对象同时监听某一个主题对象。
+		这个主题对象在状态发生变化时，会通知所有观察者对象，使它们能够自动更新自己。
+	java观察者模式的实现；
+	
+17、策略模式
+	角色：Context、Strategy、ConcreteStrategy;
+	行为：contextInterface、strategyInterface;
+		Context(strategy、+operate())、Strategy(+operate());
+	针对一组算法，将每一个算法封装到具有共同接口的独立的类中，从而使得它们可以互相替换。策略模式使得算法可以在不影响到客户端的情况下发生变化；
+	
+18、备忘录模式
+	角色：备忘录(Memento)、发起人(Originator)、负责人(Caretaker)
+	Memento(state、+get/set)、Originator(state、+createMemento()、+resotoreMemento(Memento))、Caretaker(Memento、+get/set);
+	备忘录模式意在不破坏封装的情况下，将一个对象的状态捕捉住，并外部化，存储起来，从而可以在将来合适的时候把这个对象还原到存储起来的状态。
+	
+19、职责链模式
+	角色：抽象处理者（Handler）、具体处理者（ConcreteHandler）
+	行为：handleRequest;
+	Handler(successer、+handleRequest);
+	将请求的发送者和请求的处理者解耦；
+	
+20、命令模式
+	角色：client、invoker、receiver、command/concreteCommand;
+	Invoker(command、action())、Command(execute())、ConcreteCommand、Receiver(action());
+	Receiver receiver = new Receiver();
+	Command command = new ConcreteCommand(receiver);
+	Invoker invoker = new Invoker(command);
+	invoker.action();
+	请求者发送命令给接收者，接收者执行业务逻辑；所以，业务逻辑是在接收者的行为中定义的；
+	通过命令角色，实现了请求者与接收者的解耦；
+	
+21、中介者模式
+	角色：Meditor、ConcreteMeditor、Colleague、ColleagueA、ColleagueB；
+	抽象调停者、具体调停者、抽象同事类、具体同事类；
+	Meditor(+colleagueChanged:void);
+	ConcreteMeditor(ColleagueA、ColleagueB、+createConcreteMeditor、+colleagueChanged:void);
+	Colleague(Meditor、+change:void、+action:void);
+	ColleagueA(+action:void);
+	ColleagueB(+action:void);
+	中介者模式将一个网状的系统结构变成一个以中介者为中心的星形结构。
+	中介者模式可将各同事对象解耦。中介者有利于各同事之间的松耦合，我们可以独立的改变和复用每一个同事和中介者，
+	增加新的中介者和新的同事类都比较方便，更好地符合“开闭原则”。
+	
+22、表达式模式
+	角色：client、Context、Expression、TerminalExpression、NonTermianlExpression；
+	客户端、上下文、抽象表达式、终结表达式、非终结表达式；
+	AbstractExpression(+interpret(Map));
+	VarExpression(String、+interpret(Map))；
+	AddExpression(Expression、Expression、+interpret(Map));
+	Context(Map、String[]、stack);
+	解释器是一个简单的语法解释器，最显著的优点是扩展性，扩展语法，只要增加非终结符类就可以了；
+	缺点有非终结类膨胀，递归循环影响性能；
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

@@ -1,0 +1,74 @@
+1、高吞吐量/低延时
+	虽然kafka会持久化所有数据到磁盘，但本质上每次写入都只是把数据写入到操作系统的页缓存（page cache）中，然后由操作系统自行决定什么时候把
+		页缓存中的数据写回磁盘。
+	
+	这样设计的优势：
+		1、页缓存时在内存中分配的，所以写入速度非常快；
+		2、kafka不必与底层的文件系统打交道，所有繁琐的I/O操作都交给操作系统处理；
+		3、kafka写入操作采用追加写入（append）的方式，避免了磁盘随机写操作；
+		
+	kafka在读取消息时首先从页缓存中读，如果命中，便把消息直接发送到网络的socket上，这个过程就是利用linux平台的sendfile系统调用做到的，
+		即：零拷贝技术（Zero Copy）；
+	
+	零拷贝：传统的Linux操作系统中的I/O接口是依托于数据拷贝来实现的，一个I/O操作会将同一份数据多次拷贝，数据传输过程中还涉及内核态与用户态
+		的上下文切换，CPU的开销非常大，极大地限制了OS高效进行数据传输的能力。
+		零拷贝技术：在内核驱动程序处理I/O数据的时候，它不再需要进行上下文的切换，节省了内核缓冲区与用户态应用程序缓冲区之间的数据拷贝，
+		同时，它利用直接存储器访问技术（Direct Memory Access，DMA）执行I/O操作，因此也避免了OS内核缓冲区之间的数据拷贝，即零拷贝；
+		linux提供的sendfile系统调用实现了这种零拷贝技术，而kafka的消息消费机制使用的就是sendfile，通过java的FileChannel.transferTo方法实现的；
+	
+2、负载均衡/故障转移：partition leader
+	kafka只有partition leader进行读写，副本是不提供读写功能的，只是简单地从leader同步数据；
+	
+3、伸缩性
+	kafka服务器上的状态统一交由zookeeper保管，它只保存了很轻量级的内部状态，因此整个集群间维护状态一致性的代价是很低的。
+	
+4、kafka消息：紧凑的二进制格式，没有多余的bit位浪费；
+	通过ByteBuffer来实现；
+
+5、topic、partition、offset、replica、leader、flower；
+
+6、ISR：in-sync replica
+	与leader replica保持同步的replica集合，只有这个集合里的replica才能被选举为leader，也只有该集合中所有replica都接收到了同一条消息，
+	kafka才会将该消息置于“已提交”状态（这个其实要看ack配置的）；ISR集合是动态的；
+	
+7、HW：high watermark，高水位线
+	leader的HW决定了哪些消息可以消费，也决定了flower的HW；
+	
+8、LEO：log end offset，下一条待写入消息的offset；
+
+9、索引：offset索引、时间索引、日志文件；
+	
+10、Producer：默认对key hash 取模分区；
+	aks，0：直接发送，不管有没有持久化；all：ISR都持久化了才成功；1：leader持久化了即可；
+	压缩：GZIP、LZ4、snappy；
+
+11、Consumer：
+	老版本位移存在zk，新版本位移存在_consumer_offsets主题里；
+	
+12、rebalance触发条件
+	1、组成成员变更，减少、增加；崩溃：session.time.out
+	2、topic数变更，正则表达式覆盖的数量；
+	3、分区数发生变更；
+
+13、Controller
+	在Kafka集群中，会选举出一个broker来承担controller的角色，任意时刻，只能有一个controller；
+	1、更新集群元数据信息；
+	2、创建/删除topic；
+	3、分区重分配；
+	4、leader选举；
+	5、broker加入集群、崩溃管理；
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

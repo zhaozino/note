@@ -1,0 +1,516 @@
+
+***********************************************************************
+
+java多线程编程
+
+1、线程管理
+	
+	多线程的创建：
+		1、继承Thread，实现run方法；
+		2、实现Runnabl接口，实现run方法，作为参数传入Thread构造器；
+			thread.start();
+	
+	线程的几种状态：
+		new、runnable、blocked、waiting、time waiting、terminated;
+		new、runnable、running、blocked、dead;
+		
+		thread.getName()、getPriority()、getState();
+	
+	线程中断：
+		System.exit();
+		thread.interrupt();
+		thread.isInterrupted();
+		throw new InterruptedException();
+		可以跳出run()方法，递归条件下直接跳出循环；
+	
+	线程的休眠和恢复
+		thread.sleep(1000);
+	
+	如果休眠中线程被中断，sleep()方法会立即抛出InterruptedException异常，而不需要等到线程休眠时间结束；
+	
+	thread.yield();
+		通知JVM这个线程可以释放CPU了，但JVM不保证遵循这个要求，一般用做调试；
+	
+	等待线程的终止
+		thread.join();
+		调用这句代码的线程会被挂起，等待thread这个线程执行完毕；
+	
+	守护线程的创建和运行
+		守护线程的优先级极低，通常来说，当同一个应用程序里没有其他的线程运行时，守护线程才运行。
+		当守护线程是程序中唯一运行的线程时，守护线程执行结束后，JVM也就结束了这个程序；
+		thread.setDaemon(true);
+	
+	线程中不可控异常的处理
+		public class MyExceptinoHandler implements UncaughtExceptionHandler{
+			public void uncaughtException(Hread t, Throwable e){...}
+		}
+		
+		thread.setUncaughtExceptionHandler(myExceptinoHandler);
+	
+	线程局部变量的使用
+		如果创建的对象是实现了Runnable接口的类的实例，用它作为传入参数创建多个线程对象并启动这些线程，
+		那么所有的线程将共享相同的属性；
+		
+		使用ThreadLocal<T>：
+		private ThreadLocal<Date> date = new TreadLocal<Date>{
+			protected Date initalValue(){
+				return new Date();
+			}
+		}
+		
+		date.set(val);
+		date.get();
+		date.remove();
+	
+	线程的分组
+		ThreadGroup threadGroup = new ThreadGroup("myThreadGroup");
+		Thread thread = new Thread(myThreadGroup, myRunnalble);
+		threadGroup.interrupt();
+	
+	线程组中不可控异常的处理
+		实现自己的threadGroup：
+		
+		public class MyThreadGroup extends ThreadGroup{
+			public void uncaughtException(Thread t, Throwable e){
+				...
+			}
+		}
+	
+	使用工厂类创建线程
+	
+	public class MyThreadFactory implements ThreadFactory{
+		public Thread new Thread(Runnalble r){
+			...
+			return new Thread(r);
+		}
+	}
+
+*************************************************************************
+
+2、线程同步基础
+
+	synchronized
+	
+		同一时间只能有一个线程访问synchronized包含的所有代码块；
+		但其他线程可以访问这个对象的静态方法；慎用；
+		静态同步方法与非静态同步方法之间是不会有竞态条件的；
+		
+		synchronized(this){
+		//java code
+		}
+		
+		使用非依赖属性实现同步，两个方法可以同时被执行
+			synchronized(objectA){
+			numA;
+			}
+			
+			synchronized(objectB){
+			numB;
+			}
+			
+	在同步代码中使用条件：wait/notify
+		且只能在同步代码块中使用wait/notify
+		
+		public synchronized void set(){
+			while(buffer.size==maxSize){
+				try{
+					wait();
+				}
+			}
+			
+			buffer.add(data);
+			notifyAll();
+		}
+		
+		public synchronized void get(){
+			while(buffer.size==0){
+				try{
+					wait();
+				}
+			}
+			
+			buffer.poll(data);
+			notifyAll();
+		}
+		
+		生产者线程调用set()；
+		消费者线程调用get()；
+	
+	使用锁实现同步
+		Lock lock = new ReentrantLock();
+		
+		lock.lock();
+			...
+		}finally{
+			lock.unlock();
+		}
+		
+	使用读写锁实现同步数据访问
+		使用读锁时，允许多个线程同时访问；使用写锁时，只允许一个线程进行；在一个线程执行写操作时，其他线程不能执行读操作；
+		ReadWriteLock lock = new ReentrantReadWriteLock();
+		
+		public double getPrice(){
+			lock.readLock().lock();
+			temp = price;
+			lock.readLock().unlock();
+			return temp;
+		}
+		
+		public void setPrice(price){
+			lock.writeLock().lock();
+			this.price = price;
+			lock.writeLock().unlock();
+		}
+		
+	修改锁的公平性，根据等待时间的长短获取锁
+		Lock lock = new ReentrantLock(true);
+	
+	在锁中使用多条件
+	
+	Buffer{
+		ReentrantLock lock = new ReentrantLock();
+		Condition conditionA = lock.newCondition();
+		Condition conditionB = lock.newCondition();
+		
+		public void setPrice(data){
+			lock.lock();
+			while(buffer.size() == maxSize){
+				conditionA.await();
+			}
+	
+			buffer.add(data);
+			conditionB.signalAll();
+			lock.unlock();
+		}
+		
+		public String getPrice(){
+			lock.lock();
+			while(buffer.size() == 0){
+				conditionB.await();
+			}
+			
+			buffer.add(data);
+			conditionA.signalAll();
+			lock.unlock();
+		}
+	}
+	
+	生产者线程调用set()；
+	消费者线程调用get()；
+	
+*************************************************************************
+
+3、线程同步辅助类：semaphore、countDownLatch、cyclicBarrier、phaser、exchanger
+	资源的并发访问控制：信号量semaphore
+		信号量可以控制同步块中同时可以有几个线程同时访问；
+		Semaphore semaphore = new Semaphore(1);
+		semaphore.acquire();
+		...
+		semaphore.release();
+		
+	资源的多副本的并发访问控制
+		Lock lock = new ReentrantLock();
+		Semaphore semaphore = new Semaphore(3);
+		semaphore.acquire();
+		lock.lock();
+		...
+		lock.unlock();
+		semaphore.release();
+		
+	等待多个并发事件的完成：当几个线程全部走到这一步后，再往下走
+		CountDownLatch countDownLatch = new CountDownLatch(3);
+		
+		MyThread{
+			CountDownLatch countDownLatch;
+			
+			MyThread(CountDownLatch countDownLatch){
+				this.countDownLatch = countDownLatch;
+			}
+			
+			countDown(){
+				countDownLatch.countDown();
+			}
+			
+			run(){
+				countDownLatch.await();
+				System.out.println('线程到齐了');
+			}
+		}
+		
+		其他线程引用这个线程，都执行完countDown()后，才会走System.out.println('线程到齐了');
+		
+	在集合点的同步
+		当所有线程都到达集合点后，CyclicBarrier会触发一个Runnable对象作为线程执行；
+		
+		CyclicBarrier cyclicBarrier = new CyclicBarrier(3, resultProcessRunnalbe);
+		cyclicBarrier.await();//当线程集齐3个后，就会执行线程resultProcessRunnalbe;
+	
+	并发阶段任务的运行
+		Phaser允许执行并发多阶段任务；当我们有并发任务并且需要分解成几步执行时，这种机制非常适用；
+		Phaser类机制是在每一步结束的位置对线程进行同步，当所有的线程都完成了这一步，才允许执行下一步；
+		
+		Phaser phaser new Phaser(3); //或者通过phaser.register()来注册线程；
+		phaser.arriveAndDeregister();//不再参与接下来的操作
+		phaser.arriveAndAwaitAdvance();//继续接下来的操作
+		
+		run(){
+			//业务操作step1
+			phaser.arriveAndAwaitAdvance();
+			//业务操作step2
+			phaser.arriveAndAwaitAdvance();
+			//业务操作step3
+			phaser.arriveAndAwaitAdvance();
+		}
+
+	并发阶段任务中的阶段切换
+		Phaser类提供了onAdvance()方法，它在phaser阶段改变的时候会被自动执行；
+		返回false继续执行，true表示已执行完成并且进入了终止态；
+		
+		MyPhaser extends Phaser{
+			boolean onAdvance(int phase, int registeredParties){//阶段数、参与者数量
+				return ..;
+			}
+		}
+		
+		phaser.register();//加入Phaser一个成员
+		
+	并发任务间的数据交换
+		Exchanger类允许在两个线程之间定义同步点，当两个线程都到达同步点时，他们交换数据结构；
+		
+		Exchanger<List<String>> exchanger = new Exchanger<>();
+		
+		ProducerRunnable{
+			List<String> buffer1;
+			run(){
+				for(){
+					...
+					buffer1.add(data);//调用端会初始化两个buffer，分别给消费者、生产者用，所以不用同步
+					buffer1 = exchanger.exchange(buffer1);
+				}	
+			}
+		}
+		
+		ConsumerRunnable{
+			List<String> buffer2;
+			run(){
+				for(){
+					...
+					buffer1 = exchanger.exchange(buffer1);
+				}
+				
+				buffer2.remove(data);
+			}
+		}
+		
+*************************************************************************
+
+4、线程执行器Callable、Future、
+	创建线程执行器
+		ThreadPoolExecutor executor = (ThreadPoolExecutor)Executors.newCachedThreadPool();
+		executor.execute(runnable);
+		executor.shutdown();
+		
+	创建固定大小的线程执行器
+		如果发送超过这个最大值的任务给执行器，执行器将不再创建额外的线程，剩下的任务将被阻塞知道执行器有空闲的线程可用；
+		ThreadPoolExecutor executor = (ThreadPoolExecutor)Executors.newFixedThreadPool(5);
+		
+	在执行器中执行任务并返回结果
+		接口Callable的call()方法可以返回一个Future结果；
+		
+		MyCallable implements Callable<Integer>{
+			public Integer call(){
+				int result = 1;
+				...
+				return result;
+			}
+		}
+		
+		ThreadPoolExecutor executor = (ThreadPoolExecutor)Executors.newFixedThreadPool(5);
+		
+		Future<Integer> future = executor.submit(myCallable);
+		
+		Integer num = future.get()
+		
+		while(executor.getCompletedTaskCount()<resultList.size())...;
+		
+	运行多个任务并处理第一个结果
+		List<Callable> tasks;
+		String result = executor.invokeAny(tasks);
+	
+	运行多个任务并处理所有结果
+		List<Future<Result>> resultList = executor.invokeAll(tasks);
+	
+	在执行器中延时执行任务：过一段时间再执行
+		ScheduledThreadPoolExecutor executor = (ScheduledThreadPoolExecutor)Executors.newScheduledThreadPool(1);
+		executor.schedule(task, 10, TimeUnit.SECONDS);
+		executor.awaitTermination(1, TimeUnit.DAYS);
+	
+	在执行器中周期性执行任务
+		ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+		ScheduledFuture<?> result = executor.scheduleAtFixedRate(task, 1, 2, TimeUnit.SECONDS);//1秒后执行，每两秒循环执行一次；
+	
+	在执行器中取消任务
+		future.cancel();
+		如果任务正在运行，或已完成，或已被取消，或其他原因不能取消，返回false;
+		正在执行的，future.cancel(true);//强制取消
+	
+	在执行器中控制任务的完成
+		FutureTask类提供了一个名为done()的方法，允许在执行器中的任务执行结束之后，还可以执行一些代码；
+		无论是否被取消或正常结束，done()方法才被调用；
+		
+		MyFutureTask extends FutureTask<String>{
+			protected void done(){
+				...
+			}
+		}
+		MyFutureTask task = new MyFutureTask(collable);
+		executor.submit(task);
+		
+	在执行器中分离任务的启动与结果的处理
+		一个方法发送任务到执行器，另一个方法为下一个已经执行结束的任务获取Future对象，只能获取已经执行结束任务的结果；
+		ThreadPoolExecutor executor = (ThreadPoolExecutor)Executors.newCachedThreadPool();
+		CompletionService service = new ExecutorCompletionService<>(executor);
+		service.submit(callable);
+		service.poll(20, TimeUnit.SECONDS);
+		
+	处理在执行器中被拒绝的任务
+		MyRejectedExecutionHandler implements RejectedExecutionHandler{
+			public void rejectedExecution(Runnable r, ...){...}
+		}
+		
+		executor.setRejectedExecutionHandler(myRejectedExecutionHandler);
+		
+*************************************************************************
+
+Fork/Join框架：RecursiveAction、RecursiveTask
+
+	创建Fork/Join线程池
+		RecursiveAction的父类是ForkJoinTask
+		
+		public class Task extends RecursiveAction{
+			protecete void compute(){
+				if(last-first<10){
+					updatePrices();
+				}else{
+					int middle = (first+last)/2;
+					Task task1 = new Task(products, first, middle+1);
+					Task task2 = new Task(products, middle+1, last);
+					invokeAll(task1, task2);
+				}
+			}
+		}
+		
+		main{
+			ForkJoinPool pool = new ForkJoinPool();
+			Task task = new Task(products, first, last);
+			pool.execute(task);
+			pool.shutdown();
+		}
+		
+	合并任务的结果：Future
+		public class Task extends RecursiveTask<Integer>{
+			protecete Integer compute(){
+				int result;
+				if(last-first<10){
+					result = updatePrices();
+				}else{
+					int middle = (first+last)/2;
+					Task task1 = new Task(products, first, middle+1);
+					Task task2 = new Task(products, middle+1, last);
+					invokeAll(task1, task2);
+					result = task1.get()+task2.get();
+				}
+			
+				return result;
+			}
+		}
+		
+		main{
+			ForkJoinPool pool = new ForkJoinPool();
+			Task task = new Task(products, first, last);
+			pool.execute(task);
+			do{
+				...
+			}while(!task.isDone());
+			
+			pool.awaitTermination(1, TimeUnit.DAYS);
+			或pool.shutdown();
+			System.out.println(task.get());
+		}
+		
+	异步运行任务
+		ForkJoinPool中执行ForkJoinTask时，可以采用同步或异步方式。当采用同步方式时，
+			发送任务给Fork/Join线程池的方法直到任务执行完成后才返回结果。而采用异步方式执行时，
+			发送任务给执行器的方法将立即返回结果，但是任务仍能继续执行；
+		
+		区别：
+		当采用同步方式，调用这些方法（比如，invokeAll()）时，任务将被挂起，直到任务被发送到Fork/Join线程池中
+			执行完成；这种方式允许ForkJoinPool类采用工作窃取算法来分配一个新的任务给在执行休眠任务的工作者线程。
+			当采用异步方法（比如，fork()）时，任务将继续执行，因此ForkJoinPool类无法使用工作窃取算法来提升应用程序的性能；
+			把invokeAll(task1, task2)改为task1.fork()、task2.fork();
+			在任务中抛出异常;
+		
+		不能在ForkJoinTask类的compute()方法中抛出任务非运行时异常，因为这个方法的实现没有包含任何throws声明；
+			pool.awaitTermination(1, TimeUnit.DAYS);
+			task.isCompletedAbnormally()：如果有异常将返回true;
+	
+	取消任务
+		ForkJoinTask类提供了cancel()方法来取消任务；
+			但，ForkJoinPool类不提供任何方法来取消线程池中正在运行或等待运行的所有任务；
+			不能取消已经被执行的任务；
+		task.cancel();
+		
+*************************************************************************
+
+并发集合
+	阻塞式集合：当集合为空或满时，删除或添加方法将被阻塞；
+	
+	非阻塞式集合：当集合为空或满时，删除或添加方法将返回null或抛出异常；
+	
+	使用非阻塞式线程安全列表
+		ConcurrentLinkedDeque<String> list = new ConcurrentLinkedDeque<>();
+		list.add();
+		list.poll();
+	
+	使用阻塞式线程安全列表
+		LinkedBlockingDeque<String> list = new LinkedBlockingDeque<>(3);
+		list.put();
+		list.poll();
+	
+	使用按优先级排序的阻塞式线程安全列表：由小到大排序；
+		列表中的元素要实现Comparable接口；
+		PriorityBlockingQueue<Event> queue = new PriorityBlockingQueue();
+		queue.add(item);
+		queue.poll(item);
+		
+	使用带有延迟元素的线程安全列表
+		这个类可以存放带有激活日期的元素；当调用方法从队列中返回或提取元素时，未来的元素日期将被忽略；
+		列表中的元素要实现Delayed接口；
+		DelayQueue<Event> queue = new DelayQueue<>();
+		queue.add(item);
+		queue.poll(item);
+		
+	使用线程安全非阻塞可遍历映射
+		ConcurrentNavigableMap<String, Contact> map = new ConcurrentSkipListMap<>();
+		
+	生成并发随机数
+		ThreadLocalRandom.current().nextInt(10);
+		
+	使用原子变量
+		在编译程序时，java代码中的每个变量、每个操作都将被转换成机器可以理解的指令，
+		例如，当给一个变量赋值时，在java代码中只使用一个指令，但是编译这个程序时，
+		指令被转换成JVM语言中的不同指令。当多线程共享同一个变量时，就会发生数据不一致错误；
+		原子变量使用CAS原子操作：在改变一个值的时候，看看这个值有没有已经发生变化，则取已经
+		变化的值重复业务操作。
+		
+		AtomicLong num = new AtomicLong();
+		num.get();
+		num.set(val);
+		
+	原子数组
+		使用比较和交换机制不需要使用同步机制，不仅可以避免死锁并且性能更好；
+		AtomicIntegerArray vector = new AtomicIntegerArray(1000);
+		vector.get(i);
+		vector.set(i, newVal);
+		vector.getAndIncrement(i);
+		vecotr.getAndDecrement(i);

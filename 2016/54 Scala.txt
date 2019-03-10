@@ -1,0 +1,527 @@
+
+快学scala、scala编程(33章);
+
+***********************************************************************
+
+基本概念
+
+_在scala是通配符，类似java的*;
+
+***************************************************************************************
+	
+数据类型
+	7种数据类型：Byte、Char、Short、Int、Long、Float、Double;
+	
+变量/常量
+	var：变量；
+		var t: String = "123";
+		
+	val：常量；//修改编译时会报错；
+		val t: String = "123";
+		
+方法
+	def methodName(arg0:Type0,...):returnType = {
+		...code
+		return
+	}
+	
+	def test(x:Int):Int = {
+		println("test");
+		x*2
+	}
+	
+	Unit代表void；
+	
+	a 方法 b == a.方法(b)
+	1 to 10 == 1.to(10);
+	
+	"Hello"(4) = 'o';
+	"Hello".apply(4) = 'o';
+	
+类
+	class Test{
+		var name = 'haha'; //域
+		
+		def tata():String = {
+			"test"
+		}
+	}
+	val obj = new Test
+	val rs = obj.tata()
+	val userName = obj.name
+	
+for循环
+	三个等价的表达式：0 to 9、0 util 10、Range(0,10)
+	for(i <- 0 to 9){
+		println(i)
+	}
+	
+Vector
+	val v = Vector(1, 3, 5, 7) //可以不用new关键字
+	v(3) == 7
+	
+	for(i <- v){
+		println(i)
+	}
+	
+if/else
+	def abs(x: Double):Int = if (x >= 0) x else -x
+	
+	使用return关键字会退出if/else，没用return的话会永远返回test2;
+		if(ext){
+			return "test1";
+		}
+		"test2"
+		
+模式匹配
+	def matchColor(color:String):String = {
+		color match {  //和入参比较
+			caes "red" => "RED"
+			case "blue"
+			case _ => "unknown color"
+		}
+	}
+	
+类参数，类似构造函数，但是在类上传参的
+	class Test(arg:Int){
+		def f():Int = {
+			arg*10
+		}
+	}
+	
+	val obj = new Test(12)
+	obj.f()
+	obj.arg //报错，可以在arg前面声明var/val就不会报错了
+	
+	class Test2(val arg:Int){
+		...
+	}
+	val obj2 = new Test(2)
+	obj2.arg = 25 //报错
+	
+	class Test3(args:Int*){
+		def result():Int{
+			for(n <- args){
+				println(n)
+			}
+		}
+	}
+	
+具名参数/缺省参数，参数顺序须保持一致
+	class Color(red:Int, blue:Int, green:Int)
+	new Color(red=80, blue=90, green=100)
+	new Color(80, 90, green=100)
+	
+	class Color2(red:Int=80, blue:Int=90, green:Int=100)
+	new Color2(20)
+	new Color2(20, 17)
+	new Color2(blue=20)
+		
+	new Color2(blue=20, red=10) //报错
+	
+重载：相同方法名，不同实现
+	class Test{
+		def f():Int = {88}
+		def f(arg:Int):Int = {99}
+	}
+	
+构造器
+
+辅助构造器: this
+	所有辅助构造器必须首先调用主构造器；不能在辅助构造器的参数前使用var/val；
+	class Test(val height:Double, val weight:Double, val happy:Boolean){
+		def this(height:Double){
+			this(height, 100, true)
+		}
+		
+		def this(name:String){
+			this(15.0)
+		}
+	}
+
+case类，类似静态类
+	case类会自动将所有类参数都创建为val，创建对象时不用new了；
+	
+	case class Test(arg1:Type,...)
+
+字符串插值：字符串中添加表达式、变量$
+	def test(s:String, n:Int, d:Double):String = {
+		s"first:$s, second:$n, third:$d"
+	}
+	
+	test("hi", 11, 3.14) //first:hi, second:11, third:3.14
+	
+参数化类型：类似List<Integer>
+	val p1:Vector[Int] = Vector(1,2,3)
+	
+作为对象的函数：把函数当做参数传递
+	def show(n:Int):Unit = {println("> "+n)}
+	val v = Vector(1, 2, 3, 4)
+	v.foreach(show)
+	v.foreach(n => println("> "+n))
+	foreach不会返回任何信息，而是改入参，这是其副作用；
+	
+	val v = Vector(19, 1, 7, 3, 2, 14)
+	v.sortWith((i, j) => j<i)
+	rs: Vector(19, 14, 7, 3, 2, 1)
+	
+map/reduce
+    
+	val v = Vector(1, 2, 3, 4)
+	v.map(n=>n+1) //Vector(2, 3, 4, 5)
+	
+	var sum = 0
+	v.foreach(x=>sum+=x) //sum = 10
+	
+	v.reduce((sum, n) => sum+n) //返回10
+	
+推导
+	求大于5的偶数：
+	def evenGT5(v:Vector[Int]):Vector[Int] = {
+		var result = Vector[Int]()
+		for{  //使用{}而非()，使得for可以包含多条语句或表达式
+			n <- val
+			if n>5
+			if n%2 == 0
+		}result = result :+ n
+		result
+	}
+
+	def evenGT5(v:Vector[Int]):Vector[Int] = {
+		val result = for{  //使用{}而非()，使得for可以包含多条语句或表达式
+			n <- val
+			if n>5
+			if n%2 == 0
+		}yield n
+		result
+	}
+	等价于
+	def evenGT5(v:Vector[Int]):Vector[Int] = 
+		for{n <- val; if n>5; if n%2 == 0}
+		yield n
+	
+	def yielding3(v:Vector[Int]):Vector[Int] = {
+		for{
+			n <- v
+			if n < 10
+			isOdd = (n%2 != 0)
+			if(isOdd)
+		}yield{
+			val u = n*10
+			u+2
+		}
+	}
+	val v = Vector(1, 2, 3, 5, 6, 7, 8, 10, 13, 14, 17)
+	yielding3(v) is Vector(12, 32, 52, 72)
+	
+	def yielding4(v:Vector[Int]) = {
+		for{
+			n <- val
+			if n<10
+			isOdd = (n%2 != 0)
+			if(isOdd)
+		}yield{
+			for(u <- Range(0,n))
+				yield u
+		}
+	}
+	val v = Vector(1, 2, 3, 5, 6, 7, 8, 10, 13, 14, 17)
+	yielding4(v) is Vector(0)、Vector(0,1,2)、Vector(0,1,2,3,4)、Vector(0,1,2,3,4,5,6)
+	
+基于类型的模式匹配
+	def acceptAnything(x:Any):String = {
+		x match {
+			case s:String => "A String"+s
+			case i:Int if(i<20) => s"An Int Less than 20:$i"
+			...
+			case _ => "unknown"
+		}
+	}
+	
+基于case类的模式匹配
+	case class Passenger(first:String, last:String)
+	case class Train(travelers:Vector[Passenger], line:String)
+	case class Bus(passengers:Vector[Passenger], capacity:Int)
+	
+	def travel(transport:Any):String = { //Any类似java的Object
+		transport match{
+			case Train(travelers, line) => s"Train..."
+			case Bus(travelers, seats) => s"Bus..."
+			case Passenger => "Walking...."
+			case what => s"limbo" //what会匹配任何值
+		}
+	}
+	
+简洁性
+		"afdsfdsafdsa".foreach(c => print(c))
+		"afdsfdsafdsa".foreach(print(_))
+		"afdsfdsafdsa".foreach(print)
+		
+定义操作符
+	在初始化表达式使用下划线时，它表示缺省的初始化值；
+	val m = _
+	
+自动字符串转换：toString
+	class Test(val arg:String){
+		override def toString = s"Surrey with the $adornment"
+	}
+	
+元组tuple：(k, v, ...)
+	def f = (1, 2, 3, 4)
+	f._1 = 1
+	f._2 = 2
+	
+伴随对象：object
+	不能创建object的实例，object是单一实例；
+	class X{
+		def increment() = {X.n += 1; X.n}
+	}
+	object X{
+		var n:Int = 0 //only one of these
+	}
+	var a = new X
+	var b = new X
+	a.increment() is 1
+	b.increment() is 2
+	a.increment() is 3
+
+继承：extends
+	class Parent{
+		val weight = 100.0
+		val age = 12
+	}
+	class Children extends Parent
+	
+基类初始化
+	如果基类有构造参数，那么任何继承自该类的类都必须在构造过程中提供这些参数；
+	class GreatApe(val weight:Double, val age:Int)
+	class Bonobo(weight:Double, age:Int) extends GreatApe
+	
+覆盖方法
+	class GreatApe{
+		def eat() = {10}
+	}
+	
+	class Bonobo extends GreateApe{
+		override def eat() = super.eat()*2
+	}
+	
+枚举：要想创建一个枚举，通常需要将Enumeration类继承到object中
+	object Level extends Enumeration{
+		type Level = Value
+		val Overflow, Hight, Medium, Low, Empty = Value
+	}
+	
+	Level.Medium is "Medium"
+	
+	for(n <- Range(0, Level.maxId))
+		yield (n, Level(n))
+	Vector((0, Overflow), (1, High), ...)
+	
+抽象类
+	abstract class WithCls{
+		val x:Int  //未初始化，即抽象的
+		def f():Int  //未实现，即抽象的
+	}
+	
+特征：可以多继承，不能实例化，类似接口概念
+	组合特征以生成新类时，所有域和方法都必须定义，除非是abstract类；
+	trait Color{
+		val d:Double
+		val d = 1.6
+		
+		def f(n:Int):Int
+		def f(n:Double) = n*11
+	}
+	
+	trait Texture
+	Trait Hardness
+	
+	class Paint extends Color with Texture with Hardness
+	
+创建应用
+	object Test extends App{
+		pringln("123")
+	}
+	或
+	object Test{
+		def main(args:Array[String]) = 
+			for(arg <- args)
+				println(arg)
+	}
+	
+反射
+
+多态：方法里的参数为trait/abstract，面向接口编程；
+
+sealed：除了在此处看到的Color子类型外，没有任何其他子类型，sealed类的所有子类都必须出现在同一个源文件中；
+	sealed trait Color
+		...
+
+<:符号
+	trait Spring[R <: Resilience] //R必须是Resilience类型，即Resilience是R的上界；
+	
+序列
+	Vector、List都继承自Seq；
+	
+将序列与zip结合
+	val left = Vector("a", "b", "c", "d")
+	val right = Vector("q", "r", "s", "t")
+	left.zip(right) is
+		Vector((a,q), (b,r), ...)
+	
+	left.zip(0 to 4) is
+		Vector((a,0), ...)
+	
+集：不能有重复的值
+	val set = Set(1,2,3,4)
+	
+映射表Map
+	val constants = Map("Pi"->3.14, "e"->2.718)
+	
+使用元组的模式匹配
+	object Color extends Enumeration{
+		type Color = Value
+		val red, blue, yellow, purple, green, orange, brown = Value
+	}
+
+	package object colorblend{  //package object创建colorblend对象，同时使它成为一个包
+		def blend(a:Color, b:Color) = {
+			(a,b) match{
+				case _ if a==b => a
+				case ("red", "blue") | ("blue", "red") => purple
+				case (_, "brown") => brown
+				case _ => red
+			}
+		}
+	}
+
+用异常进行错误处理
+	class Problem(val msg:String) extends Exception
+	
+	def f(i:Int) = {
+		if(i==0){
+			throw new Problem("error")
+		}
+	}
+	
+	def test(n:Int) = {
+		try{
+			f(n)
+		}catch{
+			case err:Problem => s"Failed: ${err.msg}"
+		}
+	}
+	
+构造器和异常
+	伴随对象中，apply通常被写成一个用来生成新对象的工厂，并且它是方法而不是构造器，所以可以从apply返回错误信息；构造器不能返回错误信息；
+	
+	class ExtensionException(name:String) extends Exception(
+		s"$name doesn't end with '.scala'")
+	
+	class CodeListing(val fileName:String) extends collection.IndexedSeq[String]{
+		if(!fileName.endsWith(".scala"))
+			thow new ExtensionException(fileName)
+			
+		val vec = io.Source.fromFile(fileName).getLines.toVector
+		
+		def apply(idx:Int) = vec(dx)
+		
+		def length = vec.length
+	}
+	
+	object CodeListing{
+		def apply(name:String) = {
+			try{
+				new CodeListing(name)
+			}catch{
+				case _:FileNotFoundException => Vector(s"File Not Found: $name")
+				...
+			}
+		}
+	}
+	
+使用Either进行错误报告：不相交并集，Left代表错误，Right代表成功；
+	def f(i:Int) = {
+		if(i==0){
+			Left("Divide by zero")
+		}else{
+			Right(24/i)
+		}
+	}
+	
+	def test(n:Int) = {
+		f(n) match{
+			case Left(why) => s"Failed: $why"
+			case Right(result) => result
+		}
+	}
+	
+使用Option对“非任何值”进行处理：None、Some
+	def banded(input:Double) = {
+		if(input > 1.0){
+			None
+		}else{
+			Some(100.0)
+		}
+	}
+	
+用Try来转换异常：Success/Failure
+	def f(i:Int) = Try(24/i)
+	不抛出任何异常时，你会得到一个包含结果的Success对象；在有异常时，你会得到一个包含错误信息的Failure对象；
+	
+	
+	如果for循环体以yield开始，则该循环会构造出一个集合，每次迭代生成集合中的一个值；
+		for(i <- 1 to 10) yield i % 3; //生成Vector(1, 2, 0, 1, 2, 0, 1, 2, 0, 1)
+	
+	函数：def abs(x: Double):Int = if (x >= 0) x else -x;
+	
+	当val被声明为lazy，它的初始化将被推迟，直到我们首次取它的值；
+		lazy val words = scala.io.Source.fromFile("/usr/local/abc.text").mkString;
+		
+	数组：val nums = new Array[Int](10);
+		  val s = Array("hello", "world");
+		  
+	映射：val scores = Map("Alice" -> 10, "Bob" -> 3, "Cindy" -> 8)
+		等价 Map(("Alice",10), ("Bob",3), ("Cindy",8))
+	
+	元组：(1), (1,2), (1,2,3)
+	
+	类：在Scala中，类并不声明为public，Scala源文件可以包含多个类，所有这些类都具有公有可见性；
+	class Counter{
+		private var value = 0; //你必须初始化字段
+		def increment(){value += 1} //方法默认是公有的
+		def current() = value
+	}
+	
+	val myCounter = new Counter
+	myCounter.increment()
+	println(myCounter.current)
+	
+	在java或C++中，你通常会用到既有实例方法又有静态方法的类，在Scala中，你可以通过类
+		和与类同名的伴生对象来达到同样的目的。类和它的伴生对象可以相互访问私有特性。
+		它们必须存在同一个源文件中；
+	class Account{
+		val id = Account.newUniqueNumber()
+		private var balance = 0.0
+		def deposit(amount:Double){balance += amount}
+		...
+	}
+	
+	object Account{
+		private var lastNumber = 0
+		private def newUniqueNumber() = {lastNumber += 1; lastNumber}
+	}
+	
+	协变
+		1）trait Queue[T] {} 
+		这是非变情况。这种情况下，当类型S是类型A的子类型，则Queue[S]不可认为是Queue[A]的子类型或父类型，这种情况是和Java一样的。 
+
+		2）trait Queue[+T] {} 
+		这是协变情况。这种情况下，当类型S是类型A的子类型，则Queue[S]也可以认为是Queue[A}的子类型，即Queue[S]可以泛化为Queue[A]。也就是被参数化类型的泛化方向与参数类型的方向是一致的，所以称为协变。 
+	
+	逆变
+		1）trait Queue[-T] {} 
+		这是逆变情况。这种情况下，当类型S是类型A的子类型，则Queue[A]反过来可以认为是Queue[S}的子类型。也就是被参数化类型的泛化方向与参数类型的方向是相反的，所以称为逆变。 
+	
+	

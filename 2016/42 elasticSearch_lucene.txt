@@ -1,0 +1,850 @@
+
+***********************************************************************
+
+lucene/elasticSearch
+
+lucene基本概念
+	1、文档(document)：
+	2、字段(field)：文档的一部分，包括名称和值两部分；
+	3、词(term)：一个搜索单元，表示文本中的一个词；
+	4、标记(token)：表示在字段文本中出现的词，由这个词的文本、开始和结束偏移量以及类型组成；
+	
+	lucene将所有信息写到一个称为“倒排序索引”的结构中；
+	
+	简化版的索引：
+		词条、计数、文档编号；
+	
+	每个索引分为多个“写一次，读多次”的段。建立索引时，一个段写入磁盘后就不能再更新。因此，
+		被删除文档的信息存储在一个单独的文件中，并动态应用到搜索过程中，但该段自身不被更新；
+		修改过程是先删除，再增加，以实现修改的效果；然而，多个段可以通过段合并
+		合并在一起；当强制段合并或者lucene决定合并时，这些小段就会由Lucene合并成更大的一些段；
+		合并需要I/O，然而一些信息需要清除，因为在合并时，不再需要的信息将被删除(如，被删除的文档)；
+	
+	分析器：由一个分词器(tokenizer)和零个或多个标记过滤器组成，也可以有零个或多个字符映射器。
+	过滤器：小写过滤器(lowercase filter)、同义词过滤器(synonyms filter)、多语言词干提取过滤器(multiple language...);
+	
+	评分机制：TF/IDF，词频/逆向文档频率；
+		1、匹配的词条越罕见，文档的得分越高；
+		2、文档的字段越小，文档的得分越高；
+		3、字段的加权越高，文档的得分越高；
+		4、文档匹配的查询词条数目越高、字段越少（意味着索引的词条越少），
+			lucene给文档的分数越高。同时，罕见词条比常见词条更受评分的青睐；
+	
+Elasticsearch
+	集群(cluster)是一组具有相同cluster.name的节点集合，新加入的节点会根据cluster.name来决定加入哪个集群；
+	
+	数据类型：字符串(string)、数字(number)、日期(date)、布尔型(boolean)、二进制(binary);
+	
+	Relational DB -> Databases -> Tables -> Rows -> Columns
+	Elasticsearch -> Indices   -> Types  -> Documents -> Fields
+	
+	分析器：
+		1、standard、simple、whitespace、keyword、patern、language、snowball；
+	
+	默认索引过程
+		当发送文档时，Elasticsearch会根据文档的标识符，选择文档应编入索引的分片。默认情况下，Elasticsearch计算文档标识符的散列值，
+		以此为基础将文档放置于一个可用的主分片上，接着，这些文档被重新分配至副本。
+	
+	默认检索流程
+		Elasticsearch首先查询所有节点得到标识符和匹配文档的得分，接着发送一个内部查询，但仅发送到相关分片(包含所需文档的分片)，
+		最后获取所需文档来构建响应；
+		不同的搜索类型有不同的检索流程；
+
+JAVA API：
+	Elasticsearch为Java用户提供了两种内置客户端：节点客户端/传输客户端；
+	
+	节点客户端(node client)：节点客户端以无数据节点(none data node)身份加入集群，换言之，它自己不存储任何数据，但是它知道数据在集群中的具体位置，
+		并且能够直接转发请求到对应的节点上。
+	
+	传输客户端(Transport client)：这个更轻量的传输客户端能够发送请求到远程集群。它自己不加入集群，只是简单转发请求给集群中的节点。
+	
+	两个Java客户端都通过9300端口与集群交互，使用Elasticsearch传输协议(Elasticsearch Transport Protocol)。集群中的节点之间也通过9300端口进行通信。
+		如果此端口未开放，你的节点将不能组成集群。
+	
+	Java客户端所在的Elasticsearch版本必须与集群中其他节点一致，否则，它们可能互相无法识别。
+	
+	Elasticsearch提供了通过9200进行沟通的RESTful API；
+	
+下载elasticSearch、elasticSearch-ik
+	基础：
+		配置文件：elasticsearch.yml
+			cluster.name：集群的名字；
+			node.name：实例的名字；建议手动配置，否则每次启动名字不一样；
+		
+		查询elasticSearch的基本信息
+			curl -XGET http://localhost:9200/
+		
+		检查集群健康程度
+			curl -XGET http://localhost:9200/_cluster/health?pretty
+			
+			green	所有主分片和从分片都可用；
+			yellow	所有主分片可用，但存在不可用的从分片；
+			red	存在不可用的主要分片；
+		
+		关掉elasticSearch
+			1、kill；
+			2、curl -XPOST http://localhost:9200/_cluster/nodes/_shutdown;
+	
+	索引：
+		列出所有索引
+			curl -XGET 192.168.106.58:9200/_cat/indices?v 
+			
+		创建索引
+			curl -XPUT http://localhost:9200/blog/
+			
+			在创建文档的时候，如果索引不存在，系统会自动创建索引；
+			
+		删除索引
+			curl -XDELETE http://localhost:9200/blog/
+			
+		设置索引
+			curl -XPUT http://localhost:9200/blog/ -d '{
+				"settings": {
+					"number_of_shards": 1, //分片
+					"number_of_replicas": 2 //副本
+				}
+			}'
+		
+		查看索引映射
+			curl -XGET 'localhost:9200/books/_mapping?pretty'
+			
+		查看分析
+			curl -XGET 'localhost:9200/books/_analyze?field=title' - '测试内容'
+	
+	文档：
+		添加文档，如果索引不存在会自动创建
+			curl -XPUT http://localhost:9200/blog/article/1 -d '{
+				"key":"value"
+			}'
+
+		替换文档
+			curl -XPUT http://localhost:9200/blog/article/1 -d '{
+				"title": "My first blog entry",
+				"text":  "I am starting to get the hang of this...",
+				"date":  "2014/01/02"
+			}'
+			
+		更新文档
+			curl -XPOST http://localhost:9200/blog/article/1/_update -d '{
+				"script": "ctx._source.content = \"new content\""
+			}'
+			
+			POST /website/blog/1/_update{
+			   "doc" : {                    //关键字
+				  "tags" : [ "testing" ],
+				  "views": 0
+			   }
+			}
+			
+		在进行更新操作时可以在url后边加上version，表明只有文档为此版本时才可以修改，以实现乐观锁功能；
+			PUT /website/blog/1?version=1
+				{
+				  "title": "My first blog entry",
+				  "text":  "Starting to get the hang of this..."
+				}
+		
+		使用外部版本号：和内部版本号的比较不同，只要操作的版本号大于当前版本号即可；
+			PUT /website/blog/2?version=5&version_type=external
+				{
+				  "title": "My first external blog entry",
+				  "text":  "Starting to get the hang of this..."
+				}
+		
+		删除文档
+			curl -XDELETE http://localhost:9200/blog/article/1
+		
+		检索文档
+			curl -XGET http://localhost:9200/blog/article/1
+			
+			curl -XGET http://localhost:9200/blog/article/_search?q=title:myTitle&pretty=true
+			
+			curl -XGET http://localhost:9200/blog/article/_search?pretty=true -d '{			
+				"query": {
+					"query_string": {"query": "title": "myTitle"}
+				},
+				
+				"fields": ["title", "year"], //要返回的字段
+				
+				"min_score": 0.75, //限制得分
+				
+				"from": 9,
+				"size": 15
+			}'
+		
+		URI查询中的字符串
+			curl -XGET 'localhost:9200/books/_search?pretty&q=published:2013&df=title&explain=rue&default_operator=AND';
+			q: 搜索关键字;
+			df: 默认查询字段；
+			analyzer: 分析查询的分析器；
+			default_operator: 默认操作符；
+			explain: 查询解释；
+			fields: 返回字段；
+			sort: 排序；
+			timeout: 搜索超时；
+			from, size: 查询结果窗口；
+			search_type: 搜索类型，dfs_query_then_fetch等；
+		
+	映射：
+		索引映射配置
+			curl -XPUT http://localhost:9200/blog/?pretty -d '{
+				"mappings": {
+					"field": {
+						"numberic_datection": true //数字类型
+						或
+						"dynamic_date_formats": [yyyy-MM-dd hh:mm]
+					}
+				}
+			}'
+			
+		索引结构映射
+			{
+				"mappings": {
+					"article": {
+						"properties": {
+							"id": {"type":"long", "store":"yes", "precision_step":"0"},
+							"name": {"type":"string", "store":"yes", "index":"analyzed"},
+							"published": {"type":"date", "store":"yes", "precision_step":"0"},
+							"contents": {"type":"long", "store":"no", "index":"analyzed"}
+						}
+					}
+				}
+			}
+			
+		自定义分析器
+			"settings": {
+				"index": {
+					"analysis": {
+						"analyzer": {
+							"en": {
+								"tokenizer": "standard",
+								"filter": [
+									"asciifolding",
+									"lowercase",
+									"ourEnglishFilter"
+								]
+							}
+						},
+						"filter": {
+							"ourEnglishFilter": {
+								"type": "kstem"
+							}
+						}
+					}
+				}
+			}
+		
+		定义了分析器的映射文件
+			{
+				"settings": {
+					"index": {
+						"analysis": {
+							"analyzer": {
+								"en": {
+									"tokenizer": "standard",
+									"filter": [
+										"asciifolding",
+										"lowercase",
+										"ourEnglishFilter"
+									]
+								}
+							},
+							"filter": {
+								"ourEnglishFilter": {
+									"type": "kstem"
+								}
+							}
+						}
+					}
+				},
+				
+				"mappings": {
+					"article": {
+						"properties": {
+							"id": {"type":"long", "store":"yes", "precision_step":"0"},
+							"name": {"type":"string", "store":"yes", "index":"analyzed"},
+							"published": {"type":"date", "store":"yes", "precision_step":"0"},
+							"contents": {"type":"long", "store":"no", "index":"analyzed"}
+						}
+					}
+				}
+			}
+		
+		相似度模型：影响lucene评分；
+			属性参数：{..., "similarity":"BM25"}
+			Okapi BM25模型、随机性偏差模型、信息基础模型；
+	
+	批量索引：
+		第一行包含描述操作说明的json对象；
+		第二行为json对象本身；
+		{"index": {"_index": "indexName", "_type":"documentName", "_id":1}}
+		{"name":"myName", "country":"RU"}
+		{"create": {"_index": "indexName", "_type":"documentName", "_id":2}}
+		{"name":"myName", "country":"RU"}
+		{"delete": {"_index": "indexName", "_type":"documentName", "_id":2}}
+		{ "update": { "_index": "website", "_type": "blog", "_id": "123", "_retry_on_conflict" : 3} }
+		{ "doc" : {"title" : "My updated blog post"} }
+		
+		index: 增加或更新文档；
+		create: 增加文档；
+		delete：删除文档；
+		update：更新文档
+		
+		curl -XPOST 'localhost:9200/_bulk?pretty' --data-binary @documents.json
+		
+		_bulk：是关键词；
+		
+	索引的附加内部信息
+		在Elasticsearch中，文档存在两种内部标识符，_uid、_id；
+		
+		_uid: 文档的唯一标识符，由该文档的标识符和文档类型构成；不同类型的文档编入到相同的索引时可以具有相同的文档标识符，
+			而elasticSearch仍能够区分它们；
+		
+		_id：存储着索引时设置的实际标识符。
+		
+		{
+			"book": {
+				"path": "book_id" //把book_id当做elasticSearch的文档_id
+			},
+			"properties":{
+				...
+			}
+		}
+	
+	路由
+		shard = hash(routing) % number_of_primary_shards，routing值是一个任意字符串，它默认是_id但也可以自定义。
+		
+		写入文档：
+			1、客户端给Node 1发送新建、索引或删除请求。
+			2、节点使用文档的_id确定文档属于分片0。它转发请求到Node 3，分片0位于这个节点上。
+			3、Node 3在主分片上执行请求，如果成功，它转发请求到相应的位于Node 1和Node 2的复制节点上。
+				当所有的复制节点报告成功，Node 3报告成功到请求的节点，请求的节点再报告给客户端。
+		
+		例如，指定路由值，routing是关键词：
+			curl -XPUT 'http://localhost:9200/posts/post/1?routing=12' -d '{
+				"id": "1",
+				"name": "testName",
+				"contents": "Test document",
+				"userId": "12"
+			}'
+			
+			//多个路由值用逗号隔开
+			curl -XGET 'http://localhost:9200/posts/_search?routing=12,6654&q=userId:12+AND+section:6654'
+		
+		可以指定路由键
+			{
+				"mappings": {
+					"post": {
+						"_routing": {
+							"required": true,
+							"path": "userId" //userId作为路由键
+						},
+						"properties": {
+							...
+						}
+					}
+				}
+			}
+		
+第三章：搜索
+	mapping.json
+		{
+			"book": {
+				"_index": {
+					"enabled": true
+				},
+				"_id": {
+					"index": "not_analyzed",
+					"store": "yes"
+				},
+				"properties": {
+					"author":{
+						"type": "string"
+					},
+					"characters": {
+						"type": "string"
+					},
+					"copies": {
+						"type": "long",
+						"ignore_malformed": false
+					},
+					"otitle": {
+						"type": "string"
+					},
+					"tags": {
+						"type": "string"
+					},
+					"title": {
+						"type": "string"
+					},
+					"year": {
+						"type": "long",
+						"ignore_malformed": false,
+						"index": "analyzed"
+					}
+				}
+			}
+		}
+
+	curl -XPOST 'localhost:9200/library'; //新建索引
+	curl -XPOST 'localhost:9200/library/book/_mapping' -d @mapping.json; //新建文档及映射配置；
+	
+	简单查询
+		curl -XGET 'localhost:9200/library/book/_search?q=title:crime&pretty=true';
+	
+	DSL查询
+		curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{
+			"query": {
+				"query_string": {"query": "title:crime"}
+			},
+			"fields": ["title", "year"],
+			"min_score": 0.75,
+			"from":9,
+			"size":10
+		}'
+		
+	搜索类型searchType
+		query_then_fetch：默认，先查询所有分片，再在目标分片上获取；
+		query_and_fetch：
+		dfs_query_and_fetch：
+		dfs_query_then_fetch：
+		count：
+		scan：
+	
+	搜索偏好
+		_primary：在主分片上执行搜索，不使用副本；
+		_primary_first: 
+		_local: 
+		_only_node:node_id
+		_prefer_node:node_id
+		_shards:1, 2
+		
+	词条查询：term，完全匹配，默认不对查询字段分析；
+		{
+			"query": {
+				"term": {
+					"title": "crime"
+				}
+			}
+		}
+		
+		{
+			"query": {
+				"term": {
+					"title": ["novel", "book"],
+					"minimum_match": 1 //至少匹配一个
+				}
+			}
+		}
+		
+	match all查询，查询出所有记录
+		{
+			"query": {
+				"match_all": {} //匹配索引中的所有文档，即没有任何过滤条件；
+			}
+		}
+		
+	match查询，全文搜索，会分析关键词q
+		{
+			"query": {
+				"match": {
+					"title": "crime and punishment"
+				}
+			}
+		}
+	
+	match_phrase查询，精确查询，类似like;
+	
+	multi_match查询，类似多个match查询
+		{
+			"query": {
+				"multi_match": {
+					"query": "crime punishment",
+					"fields": ["title", "otitle"]
+				}
+			}
+		}
+	
+	query_string查询，支持全部的lucene语法
+		{
+			"query": {
+				"query_string": {
+					"query": "title:crime^10 +title:punishment -otitle:cat +author:(+Fyodor +dostoevsky)",
+					"default_field": "title"
+				}
+			}
+		}
+	
+	前缀查询，查询某特定前缀开始的字段，默认不对查询字段分析
+		{
+			"query": {
+				"prefix": {
+					"title": "cri"
+				}
+			}
+		}
+		
+	fuzzy_like_this查询
+		类似more_like_this查询，它查找所有与提供的文本类似的文档，但它不同于more_like_this，它利用模糊字符串
+			并选择生成的最佳差分词条。
+		{
+			"query": {
+				"fuzzy_like_this": {
+					"fields": ["title", "otitle"],
+					"like_text": "crime punishment"
+				}
+			}
+		}
+	
+	fuzzy查询：基于编辑距离算法来匹配文档，输入crme，可以查出crime
+		{
+			"query": {
+				"fuzzy": {
+					"title": "crme"
+				}
+			}
+		}
+		
+	通配符查询
+		{
+			"query": {
+				"wildcard": {
+					"title": "cr?me"
+				}
+			}
+		}
+	
+	more_like_this查询：查询与提供的文本类似的文档。
+		{
+			"query": {
+				"more_like_this": {
+					"fields": ["title", "otitle"],
+					"like_text": "crime punishment"
+				}
+			}
+		}
+		
+	范围查询
+		{
+			"query": {
+				"range": {
+					"year": {
+						"gte": 1700,
+						"lte": 1900
+					}
+				}
+			}
+		}
+	
+	正则表达式查询
+		{
+			"query": {
+				"regxp": {
+					"title": {
+						"value": "cr.m[ae]"
+					}
+				}
+			}
+		}
+	
+	复合查询
+	布尔查询
+		should: 可能匹配，也可能不匹配，和minimum_should_match参数配合使用;
+		must：必须匹配；
+		must_not: 不被匹配；
+		{
+			"query": {
+				"bool": {
+					"must": {
+						"term": {
+							"title": "crime"
+						}
+					},
+					"should": {
+						"range": {
+							"year": {
+								"from": 1900,
+								"to": 2000
+							}
+						}
+					},
+					"must_not": {
+						"term": {
+							"otitle": "nothing"
+						}
+					}
+				}
+			}
+		}
+	
+	加权查询
+		positive：得分不变；
+		negative: 得分变低；
+		negative_boost: 加权值；
+		{
+			"query":{
+				"boosting": {
+					"positive": {
+						"term": {
+							"title": "crime"
+						}
+					},
+					"negative": {
+						"range": {
+							"year": {
+								"from": 1900,
+								"to": 2000
+							}
+						}
+					},
+					"negative_boost": 0.5
+				}
+			}
+		}
+	
+	查询结果过滤
+		{
+			"query": {
+				"match": {"title": "Catch-22"}
+			},
+			"post_filter": {
+				"term": {"year": 1961}
+			}
+		}
+		
+		//这种方法性能更好，先过滤，在查询
+		{
+			"query": {
+				"filtered": {
+					"query": {
+						"match": {"title": "Catch-22"}
+					},
+					filter": {
+						"term": {"year": 1961}
+					}
+				}
+			}
+		}
+	
+	过滤器：range、exists、missing、type、limit、组合过滤器(bool等)
+		{
+			"post_filter": {
+				"range": {
+					"year": {
+						"gte": 1900,
+						"lte": 2000
+					}
+				}
+			}
+		}
+	
+		{
+			"post_filter": {
+				"not": {
+					"and": [
+						{"term": {"title": "Catch-22"}},
+						{"range": {"year": {"gte": 1930, "lte":1990}}}
+					]
+				}
+			}
+		}
+	
+	高亮显示
+		lucene提供了三种高亮显示：1、标准类型；2、FastVectorHighlighter；3、PostingsHighlighter；
+		{
+			"query": {
+				"term": {
+					"title": "crime"
+				}
+			},
+			"highlight": {
+				"pre_tags": ["<b>"],
+				"post_tags": ["</b>"],
+				"fields": {
+					"title": {}
+				}
+			}
+		}
+	
+	排序：只能对not_analyzed的字段排序，否则排序不可预测；
+		{
+			"query": {
+				"match_all": {}
+			},
+			"sort": [{"title": "asc"}]
+		}
+	
+	聚合，类似group by：对兴趣进行分组查询
+		GET /megacorp/employee/_search
+		{
+		  "aggs": {
+			"all_interests": { //要返回的字段名
+			  "terms": { "field": "interests" } //分组的字段名
+ 			}
+		  }
+		}
+	
+	mget API：批量查询；
+	
+第四章
+	索引树形结构；
+	
+	索引非扁平数据：对象、数组、嵌套对象、父子关系；
+	
+	修改索引结构
+		1、添加一个字段phone
+			curl -XPUT 'http://localhost:9200/users/user/_mapping' -d '{
+				"user": {
+					"properties": {
+						"phone": {
+							"type": "string",
+							"store": "yes",
+							"index": "not_analyzed"
+						}
+					}
+				}
+			}'
+		
+		2、修改字段：不常用，限制很多；
+		
+第五章
+	加权查询
+	{
+		"query": {
+			"query_string": {
+				"fields": ["field1^5", "field2^10", "field3"], //查询哪些字段
+				"query": "john", //查询的key
+				"use_dis_max": false
+			}
+		}
+	}
+	
+	{
+		"query": {
+			"bool": {
+				"should": [
+					{"term": {"field1": {"value":"john", "boost": 5}}},
+					{"term": {"field2": {"value":"john", "boost": 10}}},
+					{"term": {"field3": {"value":"john"}}},
+				]
+			}
+		}
+	}
+	
+	同义词过滤器
+		{
+			"index": {
+				"analysis": {
+					"analyzer": {
+						"synonym": {
+							"tokenizer": "whitespace",
+							"filter": ["synonym"] 
+						}
+					},
+					"filter": {
+						"synonym": {
+							"type": "synonym",
+							"ignore_case": true, //即同义词过滤器
+							"synonyms": ["crime => criminality"] //同义词设置
+							或者
+							"synonyms_path": "synonyms.txt"
+						}
+					}
+				}
+			}
+		}
+		
+	定义同义词规则
+		1、显式同义词，单向的
+			star, wars => starwars
+		2、等效同义词，双向的
+			star、wars、starwars
+		3、扩展同义词
+		
+	建议器：纠正拼写错误、自动完成，包括term、phrase、completion三种类型；
+		term：这种建议器更正每个传入的单词，在非短语查询中很有用，比如单词条查询；
+		phrase：这种建议器工作在短语上，返回一个恰当的短语；
+		completion：这种建议器旨在提供快速高效的自动完成结果；
+	
+	地理空间查询	
+	
+第五章：集群
+	集群、节点、分片；
+	
+	示例：3个节点服务器，分成3个节点，3个主分片，6个复制分片，每个主分片带2个复制分片；
+	
+	Elasticsearch可以扩展到上百（甚至上千）的服务器来处理PB级的数据。
+	
+	启动一个Elasticsearch节点时，该节点会寻找具有相同集群名字并且可见的主节点，如果找到主节点，就加入集群；
+	如果没找到，该节点就成为主节点，如果配置允许的话；
+	
+	默认情况下，Elasticsearch允许节点同时成为主节点和数据节点。
+	为了提高性能，可以分离只保存数据的工作节点和只处理请求和管理集群的主节点；
+		node.master: true //默认为true
+		mode.data: false //默认为true
+		
+	discovery.zen.minimum_master_nodes: 6 //类似zookeeper选举，应设为50% + 1个节点数，防止脑裂；
+	
+	cluster.name：集群名称
+	
+	实际上，索引只是一个用来指向一个或多个分片(shards)的“逻辑命名空间(logical namespace)”。
+	一个分片(shard)是一个最小级别“工作单元(worker unit)”。
+	
+	
+	
+	
+	
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
