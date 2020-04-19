@@ -1,0 +1,2054 @@
+
+用户态/内核态
+	linux进程有4G地址空间
+	用户空间（0~3G）：
+		应用程序：shell、vi、cc等
+		服务器：库函数、进程管理、存储管理、文件管理
+	内核空间（3~4G）：
+		设备驱动：消息队列、时钟驱动、键盘驱动、磁盘驱动；
+		内核：进程调度、信号量；
+	
+	当在系统中执行一个程序时，大部分时间是运行在用户态下的，在其需要操作系统帮助完成一些用户态自己没有特权和能力完成的操作时就会切换到内核态。
+（1）系统调用
+	这是用户态进程主动要求切换到内核态的一种方式。用户态进程通过系统调用申请使用操作系统提供的服务程序完成工作。例如fork（）就是执行了一个创建新进程的系统调用。
+	系统调用的机制和新是使用了操作系统为用户特别开放的一个中断来实现，如Linux的int 80h中断。
+（2）异常
+	当cpu在执行运行在用户态下的程序时，发生了一些没有预知的异常，这时会触发由当前运行进程切换到处理此异常的内核相关进程中，也就是切换到了内核态，如缺页异常。
+（3）外围设备的中断
+	当外围设备完成用户请求的操作后，会向CPU发出相应的中断信号，这时CPU会暂停执行下一条即将要执行的指令而转到与中断信号对应的处理程序去执行，如果前面执行的指令时用户态下的程序，
+	那么转换的过程自然就会是 由用户态到内核态的切换。如硬盘读写操作完成，系统会切换到硬盘读写的中断处理程序中执行后边的操作等。
+
+****************************************************************************************************************************************
+
+协程：
+	java线程具有5种状态：初始化、可运行、运行中、阻塞、销毁；这些状态的转换是jvm通过操作系统内核中的TCB（Thread Control Block）来实现的，耗费CPU；
+	多线程并发一般会涉及：同步锁、线程状态切换、线程上下文切换。
+	协程是通过程序来实现调度的，不是操作系统，完全在用户态，就不需要用户态/内核态的切换；
+	单纯的协程放在单个线程上运行，这样完全避免了线程切换带来的开销，但一般多协程并发，会根据一定规则跑在多个线程上，同时有多协程、多线程并发的优点；
+
+****************************************************************************************************************************************
+Go runtime的调度器：
+
+用户空间线程和内核空间线程之间的映射关系有：N:1,1:1和M:NN:1是说，多个（N）用户线程始终在一个内核线程上跑，context上下文切换确实很快，
+但是无法真正的利用多核。1：1是说，一个用户线程就只在一个内核线程上跑，这时可以利用多核，但是上下文switch很慢。M:N是说， 多个goroutine在多个内核线程上跑，
+这个看似可以集齐上面两者的优势，但是无疑增加了调度的难度。
+
+Go的调度器内部有三个重要的结构：M，P，SM:代表真正的内核OS线程，和POSIX里的thread差不多，真正干活的人G:代表一个goroutine，它有自己的栈，
+instruction pointer和其他信息（正在等待的channel等等），用于调度。P:代表调度的上下文，可以把它看做一个局部的调度器，使go代码在一个线程上跑，它是实现从N:1到N:M映射的关键。
+
+https://www.zhihu.com/question/20862617
+
+M
+|
+P--灰色G         ...N个模型
+|    |
+G  灰色G
+     |
+   灰色G
+	 .
+	 .
+	 .
+	 
+图中看，有2个物理线程M，每一个M都拥有一个context（P），每一个也都有一个正在运行的goroutine。P的数量可以通过GOMAXPROCS()来设置，它其实也就代表了真正的并发度，
+即有多少个goroutine可以同时运行。图中灰色的那些goroutine并没有运行，而是出于ready的就绪态，正在等待被调度。P维护着这个队列（称之为runqueue），Go语言里，
+启动一个goroutine很容易：go function 就行，所以每有一个go语句被执行，runqueue队列就在其末尾加入一个goroutine，在下一个调度点，就从runqueue中取出（如何决定取哪个goroutine？）
+一个goroutine执行。
+
+为何要维护多个上下文P？因为当一个OS线程被阻塞时，P可以转而投奔另一个OS线程！
+图中看到，当一个OS线程M0陷入阻塞时，P转而在OS线程M1上运行。调度器保证有足够的线程来运行所以的context P。
+当MO返回时，它必须尝试取得一个context P来运行goroutine，一般情况下，它会从其他的OS线程那里steal偷一个context过来，如果没有偷到的话，它就把goroutine放在一个global runqueue里，
+然后自己就去睡大觉了（放入线程缓存里）。Contexts们也会周期性的检查global runqueue，否则global runqueue上的goroutine永远无法执行。
+
+另一种情况是P所分配的任务G很快就执行完了（分配不均），这就导致了一个上下文P闲着没事儿干而系统却任然忙碌。但是如果global runqueue没有任务G了，那么P就不得不从其他的上下文P那里拿一些G来执行。
+一般来说，如果上下文P从其他的上下文P那里要偷一个任务的话，一般就‘偷’run queue的一半，这就确保了每个OS线程都能充分的使用。
+
+
+****************************************************************************************************************************************
+
+编译语言：在编译阶段，编译成机器码，不能跨平台，改动一点代码，要整个工程重新编译一遍；如：C++
+解释语言：在编译阶段，编译成中间码，如java class字节码，在运行阶段jvm的解释器才会把class解释成机器码，如：java、C#
+JIT：just in time，即时编译器，当jvm发现某个方法或代码的运行特别频繁时，就会把这些代码认定为“热点代码”，为了提高热点代码的执行效率，在运行时，
+	虚拟机将会把这些代码编译成与本地平台相关的机器码，并进行各层次的优化，完成这个任务的编译器称为即时编译器，即时编译器并不是虚拟机必须的部分；
+	Java虚拟机规范并没有规定Java虚拟机内必须要有即时编译器存在；
+	
+	为什么HotSpot虚拟机要使用解释器与编译器并存的架构？
+		尽管并不是所有的Java虚拟机都采用解释器与编译器并存的架构，但许多主流的商用虚拟机（如HotSpot），都同时包含解释器和编译器。解释器与编译器两者各有优势：
+		当程序需要迅速启动和执行的时候，解释器可以首先发挥作用，省去编译的时间，立即执行。在程序运行后，随着时间的推移，编译器逐渐发挥作用，
+		把越来越多的代码编译成本地代码之后，可以获取更高的执行效率。当程序运行环境中内存资源限制较大（如部分嵌入式系统中），可以使用解释器执行节约内存，
+		反之可以使用编译执行来提升效率。此外，如果编译后出现“罕见陷阱”，可以通过逆优化退回到解释执行。
+		
+动态语言：一类在运行时可以根据某些条件改变自身结构的语言。主要动态语言：C#、Javascript、PHP、python、Erlang.
+静态语言：运行时结构不可变的语言。Java、C、C++。
+
+动态类型语言：是指在运行期间才去做数据类型检查的语言，说的是数据类型；主要语言：Python、Ruby、Erlang、JavaScript、swift、PHP、Perl。
+静态语言的数据类型是在编译期间（或运行之前）确定的，编写代码的时候要明确确定变量的数据类型。
+主要语言：C、C++、C#、Java、Object-C。
+
+Go是编译型的静态类型语言；
+
+****************************************************************************************************************************************
+
+Go 语言使用了更加智能的编译器，并简化了解决依赖的算法，最终提供了更快的编译速度。编译Go 程序时，编译器只会关注那些直接被引用的库，而不是像Java、C 和C++那样，要遍历
+依赖链中所有依赖的库。因此，很多Go 程序可以在1 秒内编译完。在现代硬件上，编译整个Go语言的源码树只需要20 秒。Go 语言拥有现代化的垃圾回收机制。
+
+package main
+import "fmt"
+func main(){
+	fmt.Println("Hello world!")
+}
+
+Go语言的入口是main包，main函数；为了让程序的可读性更强，Go 编译器不允许声明导入某个包却不使用。下划线让编译器接受这类导入，并且调用对应包内的所有代码文件里定义的init函数。
+	程序中每个代码文件里的init 函数都会在main 函数执行前调用。
+	
+package 包名；
+import 目录名；之后用package包名进行调用函数。
+
+相同的包名，在相同的目录下；
+与第三方包不同，从标准库中导入代码时，只需要给出要导入的包名。编译器查找包的时候，总是会到GOROOT 和GOPATH 环境变量（如代码清单2-9 所示）引用的位置去查找。
+
+Go语言的包名和java类名很像，Go使用某个函数，直接用包名引用，而java需要先声明一个类或实例，才能使用这个函数。
+
+以小写字母开头的标识符是不公开的，不能被其他包中的代码直接访问。
+
+var matchers = make(map[string]Matcher) //map 变量默认的零值是nil
+
+在Go 语言中，所有变量都被初始化为其零值。对于数值类型，零值是0；对于字符串类型，零值是空字符串；对于布尔类型，零值是false；对于指针，零值是nil。对于引用类型来说，
+所引用的底层数据结构会被初始化为对应的零值。但是被声明为其零值的引用类型的变量，会返回nil 作为其值。
+
+在Go 语言中，所有的变量都以值的方式传递。
+
+****************************************************************************************************************************************
+main.go
+
+package main
+import (
+	"log"
+	"os"
+	_ "github.com/goinaction/code/chapter2/sample/matchers"
+	"github.com/goinaction/code/chapter2/sample/search"
+)
+
+// init is called prior to main.
+func init() {
+	// Change the device for logging to stdout.
+	log.SetOutput(os.Stdout)
+}
+
+// main is the entry point for the program.
+func main() {
+	// Perform the search for the specified term.
+	search.Run("president")  //search是package包名，不是import里的名称
+}
+
+****************************************************************************************************************************************
+search/search.go
+
+package search
+func Run(searchTerm string) {
+	// Retrieve the list of feeds to search through.
+	feeds, err := RetrieveFeeds()   //feeds, err不用声明类型，编译器根据结果判断；:=这个运算符用于声明一个变量，同时给这个变量赋予初始值。这个运算符声明的变量和其他使用关键字var 声明的变量没有任何区别。
+	if err != nil {                 //根据经验，如果需要声明初始值为零值的变量，应该使用var 关键字声明变量；如果提供确切的非零值初始化变量或者使用函数返回值创建变量，应该使用简化变量声明运算符。
+		log.Fatal(err)    //将这个错误在终端窗口里输出，随后终止程序
+	}
+
+	// Create an unbuffered channel to receive match results to display.
+	results := make(chan *Result)
+
+	// Setup a wait group so we can process all the feeds.
+	var waitGroup sync.WaitGroup  //计数信号量
+
+	// Set the number of goroutines we need to wait for while
+	// they process the individual feeds.
+	waitGroup.Add(len(feeds))
+
+	// Launch a goroutine for each feed to find the results.
+	for _, feed := range feeds {  //下划线标识符的作用是占位符，占据了保存range 调用返回的索引值的变量的位置。如果要调用的函数返回多个值，而又不需要其中的某个值，就可以使用下划线标识符将其忽略。
+		// Retrieve a matcher for the search.
+		matcher, exists := matchers[feed.Type]
+		if !exists {
+			matcher = matchers["default"]
+		}
+
+		// Launch the goroutine to perform the search.
+		go func(matcher Matcher, feed *Feed) {  //启动一个匿名函数作为goroutine
+			Match(matcher, feed, searchTerm, results)
+			waitGroup.Done()
+		}(matcher, feed)
+	}
+
+	// Launch a goroutine to monitor when all the work is done.
+	go func() {  //启动一个匿名函数作为goroutine
+		// Wait for everything to be processed.
+		waitGroup.Wait()
+
+		// Close the channel to signal to the Display
+		// function that we can exit the program.
+		close(results)
+	}()
+
+	// Start displaying results as they are available and
+	// return after the final result is displayed.
+	Display(results)
+}
+
+// Display writes results to the console window as they
+// are received by the individual goroutines.
+func Display(results chan *Result) {
+	// The channel blocks until a result is written to the channel.
+	// Once the channel is closed the for loop terminates.
+	for result := range results {
+		log.Printf("%s:\n%s\n\n", result.Field, result.Content)
+	}
+}
+
+func (dec *Decoder) Decode(v interface{}) error //interface{}可以接受任何类型的值；
+
+****************************************************************************************************************************************
+search/match.go
+
+package search
+import (
+	"log"
+)
+
+// Result contains the result of a search.
+type Result struct {
+	Field   string
+	Content string
+}
+
+// Matcher defines the behavior required by types that want
+// to implement a new search type.
+type Matcher interface {
+	Search(feed *Feed, searchTerm string) ([]*Result, error)
+}
+
+// Match is launched as a goroutine for each individual feed to run
+// searches concurrently.
+func Match(matcher Matcher, feed *Feed, searchTerm string, results chan<- *Result) { //实现了Matcher 接口的值或者指针能被接受。
+	// Perform the search against the specified matcher.
+	searchResults, err := matcher.Search(feed, searchTerm)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Write the results to the channel.
+	for _, result := range searchResults {
+		results <- result
+	}
+}
+
+// Display writes results to the console window as they
+// are received by the individual goroutines.
+func Display(results chan *Result) {
+	// The channel blocks until a result is written to the channel.
+	// Once the channel is closed the for loop terminates.
+	for result := range results {
+		log.Printf("%s:\n%s\n\n", result.Field, result.Content)
+	}
+}
+
+如果接口类型只包含一个方法，那么这个类型的名字以er 结尾；
+
+****************************************************************************************************************************************
+search/default.go
+
+package search
+// defaultMatcher implements the default matcher.
+type defaultMatcher struct{} //空结构在创建实例时，不会分配任何内存。
+
+// init registers the default matcher with the program.
+func init() {
+	var matcher defaultMatcher
+	Register("default", matcher)
+}
+
+// Search implements the behavior for the default matcher.
+func (m defaultMatcher) Search(feed *Feed, searchTerm string) ([]*Result, error) { //如果声明函数的时候带有接收者，则意味着声明了一个方法。这个方法会和指定的接收者的类型绑在一起；
+	return nil, nil
+}
+
+在我们的例子里，Search 方法与defaultMatcher 类型的值绑在一起。这意味着我们可以使用defaultMatcher 类型的值或者指向这个类型值的指针来调用Search 方法。
+使用指针作为接收者声明的方法，只能在接口类型的值是一个指针的时候被调用。使用值作为接收者声明的方法，在接口类型的值为值或者指针时，都可以被调用。
+
+****************************************************************************************************************************************
+search/feed.go
+
+package search
+
+import (
+	"encoding/json"
+	"os"
+)
+
+const dataFile = "data/data.json"
+
+// Feed contains information we need to process a feed.
+type Feed struct {
+	Name string `json:"site"`
+	URI  string `json:"link"`
+	Type string `json:"type"`
+}
+
+// RetrieveFeeds reads and unmarshals the feed data file.
+func RetrieveFeeds() ([]*Feed, error) {
+	// Open the file.
+	file, err := os.Open(dataFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// Schedule the file to be closed once
+	// the function returns.
+	defer file.Close()
+
+	// Decode the file into a slice of pointers
+	// to Feed values.
+	var feeds []*Feed
+	err = json.NewDecoder(file).Decode(&feeds)
+
+	// We don't need to check for errors, the caller can do this.
+	return feeds, err
+}
+
+****************************************************************************************************************************************
+matchers/rss.go
+
+package matchers
+
+import (
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"regexp"
+
+	"github.com/goinaction/code/chapter2/sample/search"
+)
+
+type (
+	// item defines the fields associated with the item tag
+	// in the rss document.
+	item struct {
+		XMLName     xml.Name `xml:"item"`
+		PubDate     string   `xml:"pubDate"`
+		Title       string   `xml:"title"`
+		Description string   `xml:"description"`
+		Link        string   `xml:"link"`
+		GUID        string   `xml:"guid"`
+		GeoRssPoint string   `xml:"georss:point"`
+	}
+
+	// image defines the fields associated with the image tag
+	// in the rss document.
+	image struct {
+		XMLName xml.Name `xml:"image"`
+		URL     string   `xml:"url"`
+		Title   string   `xml:"title"`
+		Link    string   `xml:"link"`
+	}
+
+	// channel defines the fields associated with the channel tag
+	// in the rss document.
+	channel struct {
+		XMLName        xml.Name `xml:"channel"`
+		Title          string   `xml:"title"`
+		Description    string   `xml:"description"`
+		Link           string   `xml:"link"`
+		PubDate        string   `xml:"pubDate"`
+		LastBuildDate  string   `xml:"lastBuildDate"`
+		TTL            string   `xml:"ttl"`
+		Language       string   `xml:"language"`
+		ManagingEditor string   `xml:"managingEditor"`
+		WebMaster      string   `xml:"webMaster"`
+		Image          image    `xml:"image"`
+		Item           []item   `xml:"item"`
+	}
+
+	// rssDocument defines the fields associated with the rss document.
+	rssDocument struct {
+		XMLName xml.Name `xml:"rss"`
+		Channel channel  `xml:"channel"`
+	}
+)
+
+// rssMatcher implements the Matcher interface.
+type rssMatcher struct{}
+
+// init registers the matcher with the program.
+func init() {
+	var matcher rssMatcher
+	search.Register("rss", matcher)
+}
+
+// Search looks at the document for the specified search term.
+func (m rssMatcher) Search(feed *search.Feed, searchTerm string) ([]*search.Result, error) {
+	var results []*search.Result
+
+	log.Printf("Search Feed Type[%s] Site[%s] For URI[%s]\n", feed.Type, feed.Name, feed.URI)
+
+	// Retrieve the data to search.
+	document, err := m.retrieve(feed)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, channelItem := range document.Channel.Item {
+		// Check the title for the search term.
+		matched, err := regexp.MatchString(searchTerm, channelItem.Title)
+		if err != nil {
+			return nil, err
+		}
+
+		// If we found a match save the result.
+		if matched {
+			results = append(results, &search.Result{
+				Field:   "Title",
+				Content: channelItem.Title,
+			})
+		}
+
+		// Check the description for the search term.
+		matched, err = regexp.MatchString(searchTerm, channelItem.Description)
+		if err != nil {
+			return nil, err
+		}
+
+		// If we found a match save the result.
+		if matched {
+			results = append(results, &search.Result{
+				Field:   "Description",
+				Content: channelItem.Description,
+			})
+		}
+	}
+
+	return results, nil
+}
+
+// retrieve performs a HTTP Get request for the rss feed and decodes the results.
+func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
+	if feed.URI == "" {
+		return nil, errors.New("No rss feed uri provided")
+	}
+
+	// Retrieve the rss feed document from the web.
+	resp, err := http.Get(feed.URI)
+	if err != nil {
+		return nil, err
+	}
+
+	// Close the response once we return from the function.
+	defer resp.Body.Close()
+
+	// Check the status code for a 200 so we know we have received a
+	// proper response.
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP Response Error %d\n", resp.StatusCode)
+	}
+
+	// Decode the rss feed document into our struct type.
+	// We don't need to check for errors, the caller can do this.
+	var document rssDocument
+	err = xml.NewDecoder(resp.Body).Decode(&document)
+	return &document, err
+}
+
+****************************************************************************************************************************************
+依赖管理 go modules
+
+Go modules 出现的目的之一就是为了解决 GOPATH 的问题，也就相当于是抛弃 GOPATH 了。以前项目必须在$GOPATH/src 里进行，现在Go 允许在$GOPATH/src外的任何目录下使用 go.mod 创建项目。
+
+Tag必须遵循语义化版本控制，如果没有将忽略 Tag，然后根据你的 Commit 时间和哈希值再为你生成一个假定的符合语义化版本控制的版本号。
+
+Go modules 还默认认为，只要你的主版本号不变，那这个模块版本肯定就不包含 Breaking changes，因为语义化版本控制就是这么规定的啊。
+
+Global Caching 这个主要是针对 Go modules 的全局缓存数据说明，如下：
+	同一个模块版本的数据只缓存一份，所有其他模块共享使用。
+	目前所有模块版本数据均缓存在 $GOPATH/pkg/mod和 $GOPATH/pkg/sum 下，未来或将移至 $GOCACHE/mod和$GOCACHE/sum 下( 可能会在当 $GOPATH 被淘汰后)。
+	可以使用 go clean -modcache 清理所有已缓存的模块版本数据。
+
+配置环境变量
+	#修改 GOBIN 路径（可选）
+	go env -w GOBIN=$HOME/bin
+	#打开 Go modules
+	go env -w GO111MODULE=on
+	#设置 GOPROXY
+	go env -w GOPROXY=https://goproxy.cn,direct
+	
+	go env -w： Go1.13 新增了 go env -w 用于写入环境变量，而写入的地方是 os.UserConfigDir 所返回的路径，需要注意的是 go env -w 不会覆写。需要指出，它不会覆盖系统环境变量。
+
+	GOPROXY：
+		这个环境变量主要是用于设置 Go 模块代理，它的值是一个以英文逗号 “,” 分割的 Go module proxy 列表，默认是proxy.golang.org，国内访问不了。
+		这里要感谢盛傲飞和七牛云为中国乃至全世界的 Go 语言开发者提供免费、可靠的、持续在线的且经过CDN加速Go module proxy（goproxy.cn）。
+
+		其实值列表中的 “direct” 为特殊指示符，用于指示 Go 回源到模块版本的源地址去抓取(比如 GitHub 等)，当值列表中上一个 Go module proxy 返回 404 或 410 错误时，
+		Go 自动尝试列表中的下一个，遇见 “direct” 时回源，遇见 EOF 时终止并抛出类似 “invalid version: unknown revision…” 的错误。
+
+创建项目
+	mkdir /var/www/demo
+	cd  /var/www/demo
+
+	新建main.go
+	package main
+
+	import (
+		"github.com/gin-gonic/gin"
+		"fmt"
+	)
+
+	func main() {
+		r := gin.Default()
+		r.GET("/ping", func(c *gin.Context) {
+			fmt.Println("hello world!")
+			c.JSON(200, gin.H{
+				"message": "pong",
+			})
+		})
+		r.Run() // listen and serve on 0.0.0.0:8080
+	}
+
+#生成go.mod文件
+	go mod init  demo
+
+	打开go.mod文件，内容
+		module demo
+		go 1.13
+
+	go.mod 是启用了 Go moduels 的项目所必须的最重要的文件，它描述了当前项目（也就是当前模块）的元信息，每一行都以一个动词开头，目前有以下 5 个动词:
+
+	module：用于定义当前项目的模块路径。
+	go：用于设置预期的 Go 版本。
+	require：用于设置一个特定的模块版本。
+	exclude：用于从使用中排除一个特定的模块版本。
+	replace：用于将一个模块版本替换为另外一个模块版本。
+	这里的填写格式基本为包引用路径+版本号，另外比较特殊的是 go $version，目前从 Go1.13 的代码里来看，还只是个标识作用，暂时未知未来是否有更大的作用。
+
+执行go build后，项目中增加了go.sum、demo文件
+	├── demo
+	├── go.mod
+	├── go.sum
+	└── main.go
+
+	go.mod文件内容发生了变化，增加了
+	require github.com/gin-gonic/gin v1.4.0
+	默认使用最新版本的package。
+
+	go.sum文件内容
+	github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+	github.com/gin-contrib/sse v0.0.0-20190301062529-5545eab6dad3 h1:t8FVkw33L+wilf2QiWkw0UV77qRpcH/JHPKGpKa2E8g=
+	github.com/gin-contrib/sse v0.0.0-20190301062529-5545eab6dad3/go.mod 
+	github.com/gin-gonic/gin v1.4.0 h1:3tMoCCfM7ppqsR0ptz/wi1impNpT7/9wQtMZ8lr1mCQ=
+	github.com/gin-gonic/gin v1.4.0/go.mod h1:OW2EZn3DO8Ln9oIKOvM++LBO+5UPHJJDH72/q/3rZdM=
+	...
+
+	go.sum类似于比如 dep 的 Gopkg.lock 的一类文件，它详细罗列了当前项目直接或间接依赖的所有模块版本，并写明了那些模块版本的 SHA-256 哈希值以备 Go在今后的操作中保证项目所依赖的那些模块版本不会被篡改。
+
+	我们可以看到一个模块路径可能有如下两种：
+	github.com/gin-gonic/gin v1.4.0 h1:3tMoCCfM7ppqsR0ptz/wi1impNpT7/9wQtMZ8lr1mCQ=
+	github.com/gin-gonic/gin v1.4.0/go.mod h1:OW2EZn3DO8Ln9oIKOvM++LBO+5UPHJJDH72/q/3rZdM=
+
+	
+	前者为 Go modules 打包整个模块包文件 zip 后再进行 hash 值，而后者为针对 go.mod 的 hash 值。他们两者，要不就是同时存在，要不就是只存在 go.mod hash。
+	那什么情况下会不存在 zip hash 呢，就是当 Go 认为肯定用不到某个模块版本的时候就会省略它的 zip hash，就会出现不存在 zip hash，只存在 go.mod hash 的情况。
+	
+更换依赖版本
+	查看gin所有历史版本
+	go list -m -versions github.com/gin-gonic/gin
+	github.com/gin-gonic/gin v1.1.1 v1.1.2 v1.1.3 v1.1.4 v1.3.0 v1.4.0
+
+	go mod edit -require="github.com/gin-gonic/gin@v1.3.0"
+	go mod  tidy #更新现有依赖
+
+查看所有项目依赖的包
+	go list -m all
+
+使用go.mod管理依赖会对go get命令产生一定影响，
+	用 go help module-get 和 go help gopath-get分别去了解 Go modules 启用和未启用两种状态下的 go get 的行为
+	用 go get 拉取新的依赖
+	拉取最新的版本(优先择取 tag)：go get golang.org/x/text@latest
+	拉取 master 分支的最新 commit：go get golang.org/x/text@master
+	拉取 tag 为 v0.3.2 的 commit：go get golang.org/x/text@v0.3.2
+	拉取 hash 为 342b231 的 commit，最终会被转换为 v0.3.2：go get golang.org/x/text@342b2e
+	用 go get -u 更新现有的依赖
+
+go mod 相关命令
+	go mod download 下载 go.mod 文件中指明的所有依赖
+	go mod tidy 整理现有的依赖，删除未使用的依赖。
+	go mod graph 查看现有的依赖结构
+	go mod init 生成 go.mod 文件 (Go 1.13 中唯一一个可以生成 go.mod 文件的子命令)
+	go mod edit 编辑 go.mod 文件
+	go mod vendor 导出现有的所有依赖 (事实上 Go modules 正在淡化 Vendor 的概念)
+	go mod verify 校验一个模块是否被篡改过
+	go clean -modcache 清理所有已缓存的模块版本数据。
+	go mod 查看所有 go mod的使用命令。
+
+****************************************************************************************************************************************
+第4章：数组、切片、映射；
+
+数组
+	// 声明一个包含5 个元素的整型数组
+	var array [5]int
+	一旦声明，数组里存储的数据类型和数组长度就都不能改变了。如果需要存储更多的元素，就需要先创建一个更长的数组，再把原来数组里的值复制到新数组里。
+
+	// 用具体值初始化每个元素
+	array := [5]int{10, 20, 30, 40, 50}
+	array[2] = 35
+
+	如果使用...替代数组的长度，Go 语言会根据初始化时数组元素的数量来确定该数组的长度。
+	array := [...]int{10, 20, 30, 40, 50}
+
+	array := [5]int{1: 10, 2: 20}
+
+	array := [5]*int{0: new(int), 1: new(int)}
+	*array[0] = 10
+
+	在 Go 语言里，数组是一个值。这意味着数组可以用在赋值操作中。变量名代表整个数组，因此，同样类型的数组可以赋值给另一个数组。
+	数组变量的类型包括数组长度和每个元素的类型。只有这两部分都相同的数组，才是类型相同的数组，才能互相赋值。
+	var array1 [5]string
+	array2 := [5]string{"Red", "Blue", "Green", "Yellow", "Pink"}
+	// 把array2 的值复制到array1
+	array1 = array2
+
+	多维数组
+		// 声明一个二维整型数组，两个维度分别存储4 个元素和2 个元素
+		var array [4][2]int
+		// 使用数组字面量来声明并初始化一个二维整型数组
+		array := [4][2]int{{10, 11}, {20, 21}, {30, 31}, {40, 41}}
+		array[0][0] = 10
+		// 声明并初始化外层数组中索引为1 个和3 的元素
+		array := [4][2]int{1: {20, 21}, 3: {40, 41}}
+		// 声明并初始化外层数组和内层数组的单个元素
+		array := [4][2]int{1: {0: 20}, 3: {1: 41}}
+		
+		// 将 array1 的索引为1 的维度复制到一个同类型的新数组里
+		var array3 [2]int = array1[1]
+		
+		同样类型的多维数组可以赋值
+		array1 = array2
+
+	在函数间传递数组
+		根据内存和性能来看，在函数间传递数组是一个开销很大的操作。在函数之间传递变量时，总是以值的方式传递的。如果这个变量是一个数组，意味着整个数组，不管有多长，都会完整复制，并传递给函数。
+		可以只传入指向数组的指针，这样只需要复制8 字节的数据；
+		
+		// 分配一个需要8 MB 的数组
+		var array [1e6]int
+		// 将数组的地址传递给函数foo
+		foo(&array)
+		// 函数foo 接受一个指向100 万个整型值的数组的指针
+		func foo(array *[1e6]int) {
+			...
+		}
+
+切片
+	切片是一种数据结构，这种数据结构便于使用和管理数据集合。切片是围绕动态数组的概念构建的，可以按需自动增长和缩小。切片的动态增长是通过内置函数append 来实现的。
+	这个函数可以快速且高效地增长切片。还可以通过对切片再次切片来缩小一个切片的大小。因为切片的底层内存也是在连续块中分配的，所以切片还能获得索引、迭代以及为垃圾回收优化的好处。
+	
+	切片的数据结构包含3个字段：指向底层数组的指针、切片访问的元素的个数（即长度）和切片允许增长到的元素个数（即容量）。
+	
+	// 其长度和容量都是5 个元素，记住，如果在[]运算符里指定了一个值，那么创建的就是数组而不是切片。只有不指定值的时候，才会创建切片。
+	slice := make([]string, 5)
+	
+	// 其长度为3 个元素，容量为5 个元素
+	//创建的切片，底层数组的长度是指定的容量，但是初始化后并不能访问所有的数组元素。
+	slice := make([]int, 3, 5)
+	//可以访问3 个元素，而底层数组拥有5 个元素。剩余的2 个元素可以在后期操作中合并到切片，可以通过切片访问这些元素。如果基于这个切片创建新的切片，
+		新切片会和原有切片共享底层数组，也能通过后期操作来访问多余容量的元素。
+	
+	不允许创建容量小于长度的切片
+	slice := make([]int, 5, 3) //error
+	slice[1] = 25
+	
+	// 创建字符串切片
+	// 其长度和容量都是5 个元素
+	slice := []string{"Red", "Blue", "Green", "Yellow", "Pink"}
+	
+	// 其长度和容量都是100个元素
+	slice := []string{99: ""}
+	
+	// 创建nil 整型切片，在需要描述一个不存在的切片时，nil 切片会很好用。
+	var slice []int
+	
+	// 使用make 创建空的整型切片
+	slice := make([]int, 0)
+	// 使用切片字面量创建空的整型切片
+	slice := []int{}
+	空切片在底层数组包含0 个元素，也没有分配任何存储空间。想表示空集合时空切片很有用。
+	不管是使用 nil 切片还是空切片，对其调用内置函数append、len 和cap 的效果都是一样的。
+	
+使用切片
+	// 创建一个整型切片
+	// 其长度和容量都是5 个元素
+	slice := []int{10, 20, 30, 40, 50}
+	
+	// 创建一个新切片
+	// 其长度为2 个元素，容量为4 个元素
+	newSlice := slice[1:3]
+	切片动作后，我们有了两个切片，它们共享同一段底层数组，但通过不同的切片会看到底层数组的不同部分。
+	需要记住的是，现在两个切片共享同一个底层数组。如果一个切片修改了该底层数组的共享部分，另一个切片也能感知到。
+
+	对底层数组容量是k 的切片slice[i:j]来说
+	长度: j - i
+	容量: k - i
+	
+	切片只能访问到其长度内的元素。试图访问超出其长度的元素将会导致语言运行时异常，如代码清单4-29 所示。与切片的容量相关联的元素只能用于增长切片。在使用这部分元素前，必须将其合并到切片的长度里。
+	
+	// 创建一个整型切片
+	// 其长度和容量都是5 个元素
+	slice := []int{10, 20, 30, 40, 50}
+	// 创建一个新切片
+	// 其长度为2 个元素，容量为4 个元素
+	newSlice := slice[1:3]
+	// 使用原有的容量来分配一个新元素
+	// 将新元素赋值为60，会改到老元素值为40的节点
+	newSlice = append(newSlice, 60)
+	
+	因为newSlice 在底层数组里还有额外的容量可用，append 操作将可用的元素合并到切片的长度，并对其进行赋值。由于和原始的slice 共享同一个底层数组，slice 中索引为3 的元素的值也被改动了。
+	如果切片的底层数组没有足够的可用容量，append 函数会创建一个新的底层数组，将被引用的现有的值复制到新数组里，再追加新的值。
+	
+	// 创建一个整型切片
+	// 其长度和容量都是4 个元素
+	slice := []int{10, 20, 30, 40}
+	// 向切片追加一个新元素
+	// 将新元素赋值为50
+	newSlice := append(slice, 50)
+	当这个 append 操作完成后，newSlice 拥有一个全新的底层数组，这个数组的容量是原来的两倍。
+	
+	函数append 会智能地处理底层数组的容量增长。在切片的容量小于1000 个元素时，总是会成倍地增加容量。一旦元素个数超过1000，容量的增长因子会设为1.25，也就是会每次增加25%的容量。随着语言的演化，这种增长算法可能会有所改变。
+	
+	// 创建字符串切片
+	// 其长度和容量都是5 个元素
+	source := []string{"Apple", "Orange", "Plum", "Banana", "Grape"}
+	// 将第三个元素切片，并限制容量
+	// 其长度为3-2=1个元素，容量为4-2=2个元素
+	slice := source[2:3:4]
+	
+	如果试图设置的容量比可用的容量还大，就会得到一个语言运行时错误
+	// 这个切片操作试图设置容量为4
+	// 这比可用的容量大
+	slice := source[2:3:6] //error
+	
+	如果在创建切片时设置切片的容量和长度一样，就可以强制让新切片的第一个append 操作创建新的底层数组，与原有的底层数组分离。新切片与原有的底层数组分离后，可以安全地进行后续修改。
+	// 创建字符串切片
+	// 其长度和容量都是5 个元素
+	source := []string{"Apple", "Orange", "Plum", "Banana", "Grape"}
+	// 对第三个元素做切片，并限制容量
+	// 其长度和容量都是1 个元素
+	slice := source[2:3:3]
+	// 向slice 追加新字符串
+	slice = append(slice, "Kiwi")
+	
+	// 创建两个切片，并分别用两个整数进行初始化
+	s1 := []int{1, 2}
+	s2 := []int{3, 4}
+	// 将两个切片追加在一起，并显示结果
+	fmt.Printf("%v\n", append(s1, s2...))
+	
+迭代切片
+	for index, value := range slice {
+		fmt.Printf("Index: %d Value: %d\n", index, value)
+	}
+	需要强调的是，range 创建了每个元素的副本，而不是直接返回对该元素的引用。
+	
+	for _, value := range slice {
+		fmt.Printf("Value: %d\n", value)
+	}
+	
+	// 从第三个元素开始迭代每个元素，len返回长度，cap返回容量
+	for index := 2; index < len(slice); index++ {
+		fmt.Printf("Index: %d Value: %d\n", index, slice[index])
+	}
+	
+多维切片
+	// 创建一个整型切片的切片，长度容量都是2，下边的切片包含两个子切片，第一个子切片容量长度都是1，第二个容量长度都是2；
+	slice := [][]int{{10}, {100, 200}}
+	
+	// 为第一个切片追加值为20 的元素
+	slice[0] = append(slice[0], 20)
+	
+切片在函数间传递
+	在 64 位架构的机器上，一个切片需要24 字节的内存：指针字段需要8 字节，长度和容量字段分别需要8 字节。由于与切片关联的数据包含在底层数组里，不属于切片本身，所以将切片
+	复制到任意函数的时候，对底层数组大小都不会有影响。复制时只会复制切片本身，不会涉及底层数组（见图4-22）。
+	
+映射
+	// 创建一个映射，键的类型是string，值的类型是int
+	dict := make(map[string]int)
+	
+	// 创建一个映射，键和值的类型都是string
+	// 使用两个键值对初始化映射
+	dict := map[string]string{"Red": "#da1337", "Orange": "#e95a22"}
+	dict := map[int][]string{}
+	dict["Red"] = "#da1337"
+	
+	映射的键可以是任何值。这个值的类型可以是内置的类型，也可以是结构类型，只要这个值可以使用==运算符做比较。切片、函数以及包含切片的结构类型这些类型由于具有引用语义，
+	不能作为映射的键，使用这些类型会造成编译错误.
+	
+	// 通过声明映射创建一个nil 映射
+	var colors map[string]string
+	// 将Red 的代码加入到映射
+	colors["Red"] = "#da1337"  //error
+	
+	// 获取键Blue 对应的值
+	value, exists := colors["Blue"]
+	// 这个键存在吗？
+	if exists {
+		fmt.Println(value)
+	}
+	
+	// 获取键Blue 对应的值
+	value := colors["Blue"]
+	// 这个键存在吗？
+	if value != "" {
+		fmt.Println(value)
+	}
+	
+	for key, value := range colors {
+		fmt.Printf("Key: %s Value: %s\n", key, value)
+	}
+	
+	// 删除键为Coral 的键值对
+	delete(colors, "Coral")
+	
+	在函数间传递映射并不会制造出该映射的一个副本。实际上，当传递映射给一个函数，并对这个映射做了修改时，所有对这个映射的引用都会察觉到这个修改.
+	
+	
+****************************************************************************************************************************************
+第5章：Go语言的类型系统；
+
+	// user 在程序里定义一个用户类型
+	type user struct {
+		ame string
+		email string
+		ext int
+		privileged bool
+	}
+
+	// 声明user 类型的变量
+	var bill user
+	
+	当声明变量时，这个变量对应的值总是会被初始化。这个值要么用指定的值初始化，要么用零值（即变量类型的默认值）做初始化。对数值类型来说，零值是0；
+	对字符串来说，零值是空字符串；对布尔类型，零值是false。对这个例子里的结构，结构里每个字段都会用零值初始化。
+	
+	// 声明user 类型的变量，并初始化所有字段
+	lisa := user{
+		name: "Lisa",
+		email: "lisa@email.com",
+		ext: 123,
+		privileged: true,
+	}
+	
+	lisa := user{"Lisa", "lisa@email.com", 123, true}
+	
+	type admin struct {
+		person user
+		level string
+	}
+	
+	// 声明admin 类型的变量
+	fred := admin{
+		person: user{
+			name: "Lisa",
+			email: "lisa@email.com",
+			ext: 123,
+			privileged: true,
+		},
+		level: "super",
+	}
+	
+	基于int64 声明一个新类型
+	type Duration int64
+	Go 并不认为Duration 和int64 是同一种类型。
+	
+	var dur Duration
+	dur = int64(1000) //error
+	
+	// notify 使用值接收者实现了一个方法
+	func (u user) notify() {
+		fmt.Printf("Sending User Email To %s<%s>\n",
+		u.name,
+		u.email)
+	}
+	
+	// changeEmail 使用指针接收者实现了一个方法
+	func (u *user) changeEmail(email string) {
+		u.email = email
+	}
+	
+	// user 类型的值可以用来调用
+	// 使用值接收者声明的方法
+	bill := user{"Bill", "bill@email.com"}
+	bill.notify()
+
+	// 指向user 类型值的指针也可以用来调用
+	// 使用值接收者声明的方法
+	lisa := &user{"Lisa", "lisa@email.com"}
+	lisa.notify()
+	
+	// user 类型的值可以用来调用
+	// 使用指针接收者声明的方法
+	bill.changeEmail("bill@newdomain.com")
+	bill.notify()
+	
+	// 指向user 类型值的指针可以用来调用
+	// 使用指针接收者声明的方法
+	lisa.changeEmail("lisa@newdomain.com")
+	lisa.notify()
+	
+	Go 语言里的引用类型有如下几个：切片、映射、通道、接口和函数类型。
+	
+接口
+	如果使用指针接收者来实现一个接口，那么只有指向那个类型的指针才能够实现对应的接口。如果使用值接收者来实现一个接口，那么那个类型的值和指针都能够实现对应的接口。
+	
+嵌入类型
+	通过嵌入类型，与内部类型相关的标识符会提升到外部类型上。这些被提升的标识符就像直接声明在外部类型里的标识符一样，也是外部类型的一部分。这样外部类型就组合了内部类型包
+	含的所有属性，并且可以添加新的字段和方法。外部类型也可以通过声明与内部类型标识符同名的标识符来覆盖内部标识符的字段或者方法。这就是扩展或者修改已有类型的方法。
+
+	01 // 这个示例程序展示如何将一个类型嵌入另一个类型，以及
+	02 // 内部类型和外部类型之间的关系
+	03 package main
+	04
+	05 import (
+	06 "fmt"
+	07 )
+	08
+	09 // user 在程序里定义一个用户类型
+	10 type user struct {
+	11 name string
+	12 email string
+	13 }
+	14
+	15 // notify 实现了一个可以通过user 类型值的指针
+	16 // 调用的方法
+	17 func (u *user) notify() {
+	18 fmt.Printf("Sending user email to %s<%s>\n",
+	19 u.name,
+	20 u.email)
+	21 }
+	22
+	23 // admin 代表一个拥有权限的管理员用户
+	24 type admin struct {
+	25 user // 嵌入类型
+	26 level string
+	27 }
+	28
+	29 // main 是应用程序的入口
+	30 func main() {
+	31 // 创建一个admin 用户
+	32 ad := admin{
+	33 user: user{
+	34 name: "john smith",
+	35 email: "john@yahoo.com",
+	36 },
+	37 level: "super",
+	38 }
+	39
+	40 // 我们可以直接访问内部类型的方法
+	41 ad.user.notify()
+	42
+	43 // 内部类型的方法也被提升到外部类型
+	44 ad.notify()
+	45 }
+	
+	go的函数入参，可以传指针、值，会互相转换；
+	外部/内部类型，同时实现某个函数，调用时优先用外部函数；
+
+公开或未公开的标识符
+	当一个标识符的名字以小写字母开头时，这个标识符就是未公开的，即包外的代码不可见。如果一个标识符以大写字母开头，这个标识符就是公开的，即被包外的代码可见。
+
+	counters/counters.go
+	-----------------------------------------------------------------------
+	01 // counters 包提供告警计数器的功能
+	02 package counters
+	03
+	04 // alertCounter 是一个未公开的类型
+	05 // 这个类型用于保存告警计数
+	06 type alertCounter int
+	07
+	08 // New 创建并返回一个未公开的
+	09 // alertCounter 类型的值
+	10 func New(value int) alertCounter {
+	11 return alertCounter(value)
+	12 }
+	listing68.go
+	-----------------------------------------------------------------------
+	01 // 这个示例程序展示如何访问另一个包的未公开的
+	02 // 标识符的值
+	03 package main
+	04
+	05 import (
+	06 "fmt"
+	07
+	08 "github.com/goinaction/code/chapter5/listing68/counters"
+	09 )
+	10
+	11 // main 是应用程序的入口
+	12 func main() {
+	13 // 使用counters 包公开的New 函数来创建
+	14 // 一个未公开的类型的变量
+	15 counter := counters.New(10)
+	16
+	17 fmt.Printf("Counter: %d\n", counter)
+	18 }
+	main函数中引用了alertCounter（小写未公开）。
+	
+	要让这个行为可行，需要两个理由。第一，公开或者未公开的标识符，不是一个值。第二， 短变量声明操作符，有能力捕获引用的类型，并创建一个未公开的类型的变量。
+	永远不能显式创建一个未公开的类型的变量，不过短变量声明操作符可以这么做。
+
+	// entities包包含系统中
+	// 与人有关的类型
+    package entities
+    
+	// user在程序里定义一个用户类型 
+	type user struct {
+		Name string
+		Email string
+	}
+
+	// Admin在程序里定义了管理员
+	type Admin struct {
+		user // 嵌入的类型未公开
+		Rights int
+	}
+
+****************************************************************************************************************************************
+第6章：并发；
+	M：操作系统线程，三角形；
+	P：逻辑处理器，长方形；
+	G：goroutine，原形；
+	
+	Go 语言的并发同步模型来自一个叫作通信顺序进程（Communicating Sequential Processes，CSP）的范型（paradigm）。CSP 是一种消息传递模型，通过在goroutine 之间传递数据来传递消息，而不是
+	对数据进行加锁来实现同步访问。用于在goroutine 之间同步和传递数据的关键数据类型叫作通道（channel）。
+	
+	在1.5 版本上，Go语言的运行时默认会为每个可用的物理处理器分配一个逻辑处理器。在1.5 版本之前的版本中，默认给
+	整个应用程序只分配一个逻辑处理器。这些逻辑处理器会用于执行所有被创建的goroutine。即便只有一个逻辑处理器，Go也可以以神奇的效率和性能，并发调度无数个goroutine。
+	
+	如果创建一个goroutine 并准备运行，这个goroutine 就会被放到调度器的全局运行队列中。之后，调度器就将这些队列中的goroutine 分配给一个逻辑处理器，并放到这个逻辑处理器对应的本地运行队列
+	中。本地运行队列中的goroutine 会一直等待直到自己被分配的逻辑处理器执行。
+
+	有时，正在运行的goroutine 需要执行一个阻塞的系统调用，如打开一个文件。当这类调用发生时，线程和goroutine 会从逻辑处理器上分离，该线程会继续阻塞，等待系统调用的返回。
+	与此同时，这个逻辑处理器就失去了用来运行的线程。所以，调度器会创建一个新线程，并将其绑定到该逻辑处理器上。之后，调度器会从本地运行队列里选择另一个goroutine 来运行。一旦
+	被阻塞的系统调用执行完成并返回，对应的goroutine 会放回到本地运行队列，而之前的线程会保存好，以便之后可以继续使用。
+	
+	如果一个 goroutine 需要做一个网络I/O 调用，流程上会有些不一样。在这种情况下，goroutine会和逻辑处理器分离，并移到集成了网络轮询器的运行时。一旦该轮询器指示某个网络读或者写
+	操作已经就绪，对应的goroutine 就会重新分配到逻辑处理器上来完成操作。调度器对可以创建的逻辑处理器的数量没有限制，但语言运行时默认限制每个程序最多创建10 000 个线程。这个
+	限制值可以通过调用runtime/debug 包的SetMaxThreads 方法来更改。如果程序试图使用更多的线程，就会崩溃。
+	
+	// 这个示例程序展示如何创建goroutine
+	// 以及调度器的行为
+	package main
+	
+	import (
+		"fmt"
+		"runtime"
+		"sync"
+	)
+	
+	// main 是所有Go 程序的入口
+
+	func main() {
+		// 分配一个逻辑处理器给调度器使用
+		runtime.GOMAXPROCS(1)
+		
+		// 给每个可用的核心分配一个逻辑处理器
+		//runtime.GOMAXPROCS(runtime.NumCPU())
+		
+		// wg 用来等待程序完成
+		// 计数加 2，表示要等待两个goroutine
+		var wg sync.WaitGroup
+		wg.Add(2)
+	
+		fmt.Println("Start Goroutines")
+	
+		// 声明一个匿名函数，并创建一个goroutine
+		go func() {
+			// 在函数退出时调用Done 来通知main 函数工作已经完成
+			defer wg.Done()
+	
+			// 显示字母表3 次
+			for count := 0; count < 3; count++ {
+				for char := 'a'; char < 'a'+26; char++ {
+					fmt.Printf("%c ", char)
+				}
+			}
+		}()
+	
+		// 声明一个匿名函数，并创建一个goroutine
+		go func() {
+			// 在函数退出时调用Done 来通知main 函数工作已经完成
+			defer wg.Done()
+	
+			// 显示字母表3 次
+			for count := 0; count < 3; count++ {
+				for char := 'A'; char < 'A'+26; char++ {
+					fmt.Printf("%c ", char)
+				}
+			}
+		}()
+	
+		// 等待 goroutine 结束
+		fmt.Println("Waiting To Finish")
+		wg.Wait()
+	
+		fmt.Println("\nTerminating Program")
+	}
+	
+	在代码清单6-1 的第14 行，调用了runtime 包的GOMAXPROCS 函数。这个函数允许程序更改调度器可以使用的逻辑处理器的数量。如果不想在代码里做这个调用，也可以通过修改和这
+	个函数名字一样的环境变量的值来更改逻辑处理器的数量。给这个函数传入1，是通知调度器只能为该程序使用一个逻辑处理器。
+
+	基于调度器的内部算法，一个正运行的goroutine 在工作结束前，可以被停止并重新调度。调度器这样做的目的是防止某个goroutine 长时间占用逻辑处理器。当goroutine 占用时间过长时，
+	调度器会停止当前正运行的goroutine，并给其他可运行的goroutine 运行的机会。
+	
+竞争状态、锁住共享资源
+	// 当前 goroutine 从线程退出，并放回到队列
+	runtime.Gosched()
+	
+	原子函数能够以很底层的加锁机制来同步访问整型变量和指针。
+	
+	import ("sync/atomic")
+	counter int64
+	// 安全同步地对counter加1
+	atomic.AddInt64(&counter, 1)
+	
+	另外两个有用的原子函数是LoadInt64 和StoreInt64。这两个函数提供了一种安全地读和写一个整型值的方式。
+	atomic.StoreInt64(&counter, 1) //写入1
+	if atomic.LoadInt64(&counter) == 1 { //读取值
+		...
+	}
+	
+互斥所
+	package main
+	import ("sync")
+	
+	var mutex sync.Mutex
+	
+	func main(){
+		go test()
+		go test()
+	}
+	
+	func test(){
+		...
+		mutex.Lock() //加锁进入临界区
+		{
+				...
+		}
+		mutex.Unlock() //解锁离开临界区
+		...
+	}
+	
+通道
+	可以通过通道共享内置类型、命名类型、结构类型和引用类型的值或者指针。
+	
+	// 无缓冲的整型通道
+	unbuffered := make(chan int)
+	// 有缓冲的字符串通道
+	buffered := make(chan string, 10)
+	
+	// 通过通道发送一个字符串
+	buffered <- "Gopher"
+	// 从通道接收一个字符串
+	value, ok := <-buffered //ok为false，代表channel已经空了且被关闭
+	
+	close(buffered)
+	
+	无缓冲的通道（unbuffered channel）是指在接收前没有能力保存任何值的通道。这种类型的通道要求发送goroutine 和接收goroutine 同时准备好，才能完成发送和接收操作。如果两个goroutine
+	没有同时准备好，通道会导致先执行发送或接收操作的goroutine 阻塞等待。这种对通道进行发送和接收的交互行为本身就是同步的。其中任意一个操作都无法离开另一个操作单独存在。
+	
+	// 这个示例程序展示如何用无缓冲的通道来模拟
+	// 2 个goroutine 间的网球比赛
+	package main
+
+	import (
+		"fmt"
+		"math/rand"
+		"sync"
+		"time"
+	)
+
+	// wg 用来等待程序结束
+	var wg sync.WaitGroup
+
+	func init() {
+		rand.Seed(time.Now().UnixNano())
+	}
+
+	// main 是所有Go 程序的入口
+	func main() {
+		// 创建一个无缓冲的通道
+		court := make(chan int)
+
+		// 计数加 2，表示要等待两个goroutine
+		wg.Add(2)
+
+		// 启动两个选手
+		go player("Nadal", court)
+		go player("Djokovic", court)
+
+		// 发球
+		court <- 1
+
+		// 等待游戏结束
+		wg.Wait()
+	}
+
+	// player 模拟一个选手在打网球
+	func player(name string, court chan int) {
+		// 在函数退出时调用Done 来通知main 函数工作已经完成
+		defer wg.Done()
+
+		for {
+			// 等待球被击打过来
+			ball, ok := <-court
+			if !ok {
+				// 如果通道被关闭，我们就赢了
+				fmt.Printf("Player %s Won\n", name)
+				return
+			}
+
+			// 选随机数，然后用这个数来判断我们是否丢球
+			n := rand.Intn(100)
+			if n%13 == 0 {
+				fmt.Printf("Player %s Missed\n", name)
+
+				// 关闭通道，表示我们输了
+				close(court)
+				return
+			}
+
+			// 显示击球数，并将击球数加1
+			fmt.Printf("Player %s Hit %d\n", name, ball)
+			ball++
+
+			// 将球打向对手
+			court <- ball
+		}
+	}
+	
+	有缓冲的通道（buffered channel）是一种在被接收前能存储一个或者多个值的通道。这种类型的通道并不强制要求goroutine 之间必须同时完成发送和接收。通道会阻塞发送和接收动作的
+	条件也会不同。只有在通道中没有要接收的值时，接收动作才会阻塞。只有在通道没有可用缓冲区容纳被发送的值时，发送动作才会阻塞。这导致有缓冲的通道和无缓冲的通道之间的一个很大
+	的不同：无缓冲的通道保证进行发送和接收的goroutine 会在同一时间进行数据交换；有缓冲的通道没有这种保证。
+
+通道close函数
+	close一个通道，该通道必须是双向的或仅发送的。
+	
+	ch1 := make(chan int, 10)
+	ch2 := make(chan<- int, 10)
+	ch3 := make(<-chan int, 10) //只接收的通道不能被关闭
+	close(ch1)
+	close(ch2)
+	close(ch3) //error
+	
+	channel应仅由发送方执行，而不应由接收方执行，并且在收到最后发送的值后具有关闭通道的效果。
+	即channel 应该由发送的一方执行，由接收 channel 的一方关闭。
+	
+	在从闭合通道 c 接收到最后一个值之后，来自 c 的任何接收都将成功而不会阻塞，返回通道元素的零值。即，关闭的通道仍能接收到值，且是零值，所以要用ok来判断；
+	如下，因为通道元素类型是int，零值是0，所以输出全是ch 的 this is from ch 0 ，而 ch1由于没有赋值，所以没有 IO 操作不能被 select 捕捉
+	
+	func receive(ch chan int, ch1 chan int) {
+		for {
+			select {
+			case a := <-ch:
+				fmt.Println("this is from ch", a)
+			case b := <-ch1:
+				fmt.Println("this is from ch1", b)
+			}
+		}
+	}
+
+	func main() {
+		ch := make(chan int, 10)
+		ch1 := make(chan int, 10)
+		close(ch)
+		go receive(ch, ch1)
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	对于封闭的通道，表单x , ok := <- c 也会将 ok 设置为 false
+	输出 0 和 false ，通过这一点我们可以判断 channel 是否被关闭
+	
+	ch := make(chan int, 10)
+	close(ch)
+	if x, ok := <-ch; !ok {
+		fmt.Println(x, ok)
+	}
+
+	
+****************************************************************************************************************************************
+第7章：并发模式；
+
+runner
+	runner 包用于展示如何使用通道来监视程序的执行时间，如果程序运行时间太长，也可以用runner 包来终止程序。当开发需要调度后台处理任务的程序的时候，这种模式会很有用。这
+	个程序可能会作为cron 作业执行，或者在基于定时任务的云环境（如iron.io）里执行。
+	
+	// Example is provided with help by Gabriel Aszalos.
+	// Package runner manages the running and lifetime of a process.
+	package runner
+
+	import (
+		"errors"
+		"os"
+		"os/signal"
+		"time"
+	)
+
+	// Runner runs a set of tasks within a given timeout and can be
+	// shut down on an operating system interrupt.
+	type Runner struct {
+		// interrupt channel reports a signal from the
+		// operating system.
+		interrupt chan os.Signal
+
+		// complete channel reports that processing is done.
+		complete chan error
+
+		// timeout reports that time has run out.
+		timeout <-chan time.Time
+
+		// tasks holds a set of functions that are executed
+		// synchronously in index order.
+		tasks []func(int)
+	}
+
+	// ErrTimeout is returned when a value is received on the timeout channel.
+	var ErrTimeout = errors.New("received timeout")
+
+	// ErrInterrupt is returned when an event from the OS is received.
+	var ErrInterrupt = errors.New("received interrupt")
+
+	// New returns a new ready-to-use Runner.
+	func New(d time.Duration) *Runner {
+		return &Runner{
+			interrupt: make(chan os.Signal, 1),
+			complete:  make(chan error),
+			timeout:   time.After(d),
+		}
+	}
+
+	// Add attaches tasks to the Runner. A task is a function that
+	// takes an int ID.
+	func (r *Runner) Add(tasks ...func(int)) {
+		r.tasks = append(r.tasks, tasks...)
+	}
+
+	// Start runs all tasks and monitors channel events.
+	func (r *Runner) Start() error {
+		// We want to receive all interrupt based signals.
+		signal.Notify(r.interrupt, os.Interrupt)
+
+		// Run the different tasks on a different goroutine.
+		go func() {
+			r.complete <- r.run()
+		}()
+
+		select {
+		// Signaled when processing is done.
+		case err := <-r.complete:
+			return err
+
+		// Signaled when we run out of time.
+		case <-r.timeout:
+			return ErrTimeout
+		}
+	}
+
+	// run executes each registered task.
+	func (r *Runner) run() error {
+		for id, task := range r.tasks {
+			// Check for an interrupt signal from the OS.
+			if r.gotInterrupt() {
+				return ErrInterrupt
+			}
+
+			// Execute the registered task.
+			task(id)
+		}
+
+		return nil
+	}
+
+	// gotInterrupt verifies if the interrupt signal has been issued.
+	func (r *Runner) gotInterrupt() bool {
+		select {
+		// Signaled when an interrupt event is sent.
+		case <-r.interrupt:
+			// Stop receiving any further signals.
+			signal.Stop(r.interrupt)
+			return true
+
+		// Continue running as normal.
+		default:
+			return false
+		}
+	}
+
+	----------------------------------------
+	
+	// This sample program demonstrates how to use a channel to
+	// monitor the amount of time the program is running and terminate
+	// the program if it runs too long.
+	package main
+
+	import (
+		"log"
+		"os"
+		"time"
+
+		"github.com/goinaction/code/chapter7/patterns/runner"
+	)
+
+	// timeout is the number of second the program has to finish.
+	const timeout = 3 * time.Second
+
+	// main is the entry point for the program.
+	func main() {
+		log.Println("Starting work.")
+
+		// Create a new timer value for this run.
+		r := runner.New(timeout)
+
+		// Add the tasks to be run.
+		r.Add(createTask(), createTask(), createTask())
+
+		// Run the tasks and handle the result.
+		if err := r.Start(); err != nil {
+			switch err {
+			case runner.ErrTimeout:
+				log.Println("Terminating due to timeout.")
+				os.Exit(1)
+			case runner.ErrInterrupt:
+				log.Println("Terminating due to interrupt.")
+				os.Exit(2)
+			}
+		}
+
+		log.Println("Process ended.")
+	}
+
+	// createTask returns an example task that sleeps for the specified
+	// number of seconds based on the id.
+	func createTask() func(int) {
+		return func(id int) {
+			log.Printf("Processor - Task #%d.", id)
+			time.Sleep(time.Duration(id) * time.Second)
+		}
+	}
+
+
+pool
+	这个包用于展示如何使用有缓冲的通道实现资源池，来管理可以在任意数量的goroutine之间共享及独立使用的资源。这种模式在需要共享一组静态资源的情况（如
+	共享数据库连接或者内存缓冲区）下非常有用。如果goroutine需要从池里得到这些资源中的一个，它可以从池里申请，使用完后归还到资源池里。
+	
+	// Example provided with help from Fatih Arslan and Gabriel Aszalos.
+	// Package pool manages a user defined set of resources.
+	package pool
+
+	import (
+		"errors"
+		"io"
+		"log"
+		"sync"
+	)
+
+	// Pool manages a set of resources that can be shared safely by
+	// multiple goroutines. The resource being managed must implement
+	// the io.Closer interface.
+	type Pool struct {
+		m         sync.Mutex
+		resources chan io.Closer
+		factory   func() (io.Closer, error)
+		closed    bool
+	}
+
+	// ErrPoolClosed is returned when an Acquire returns on a
+	// closed pool.
+	var ErrPoolClosed = errors.New("Pool has been closed.")
+
+	// New creates a pool that manages resources. A pool requires a
+	// function that can allocate a new resource and the size of
+	// the pool.
+	func New(fn func() (io.Closer, error), size uint) (*Pool, error) {
+		if size <= 0 {
+			return nil, errors.New("Size value too small.")
+		}
+
+		return &Pool{
+			factory:   fn,
+			resources: make(chan io.Closer, size),
+		}, nil
+	}
+
+	// Acquire retrieves a resource	from the pool.
+	func (p *Pool) Acquire() (io.Closer, error) {
+		select {
+		// Check for a free resource.
+		case r, ok := <-p.resources:
+			log.Println("Acquire:", "Shared Resource")
+			if !ok {
+				return nil, ErrPoolClosed
+			}
+			return r, nil
+
+		// Provide a new resource since there are none available.
+		default:
+			log.Println("Acquire:", "New Resource")
+			return p.factory()
+		}
+	}
+
+	// Release places a new resource onto the pool.
+	func (p *Pool) Release(r io.Closer) {
+		// Secure this operation with the Close operation.
+		p.m.Lock()
+		defer p.m.Unlock()
+
+		// If the pool is closed, discard the resource.
+		if p.closed {
+			r.Close()
+			return
+		}
+
+		select {
+		// Attempt to place the new resource on the queue.
+		case p.resources <- r:
+			log.Println("Release:", "In Queue")
+
+		// If the queue is already at cap we close the resource.
+		default:
+			log.Println("Release:", "Closing")
+			r.Close()
+		}
+	}
+
+	// Close will shutdown the pool and close all existing resources.
+	func (p *Pool) Close() {
+		// Secure this operation with the Release operation.
+		p.m.Lock()
+		defer p.m.Unlock()
+
+		// If the pool is already close, don't do anything.
+		if p.closed {
+			return
+		}
+
+		// Set the pool as closed.
+		p.closed = true
+
+		// Close the channel before we drain the channel of its
+		// resources. If we don't do this, we will have a deadlock.
+		close(p.resources)
+
+		// Close the resources
+		for r := range p.resources {
+			r.Close()
+		}
+	}
+
+	
+	-----------------------------------------------------------
+	
+	// This sample program demonstrates how to use the pool package
+	// to share a simulated set of database connections.
+	package main
+
+	import (
+		"io"
+		"log"
+		"math/rand"
+		"sync"
+		"sync/atomic"
+		"time"
+
+		"github.com/goinaction/code/chapter7/patterns/pool"
+	)
+
+	const (
+		maxGoroutines   = 25 // the number of routines to use.
+		pooledResources = 2  // number of resources in the pool
+	)
+
+	// dbConnection simulates a resource to share.
+	type dbConnection struct {
+		ID int32
+	}
+
+	// Close implements the io.Closer interface so dbConnection
+	// can be managed by the pool. Close performs any resource
+	// release management.
+	func (dbConn *dbConnection) Close() error {
+		log.Println("Close: Connection", dbConn.ID)
+		return nil
+	}
+
+	// idCounter provides support for giving each connection a unique id.
+	var idCounter int32
+
+	// createConnection is a factory method that will be called by
+	// the pool when a new connection is needed.
+	func createConnection() (io.Closer, error) {
+		id := atomic.AddInt32(&idCounter, 1)
+		log.Println("Create: New Connection", id)
+
+		return &dbConnection{id}, nil
+	}
+
+	// main is the entry point for all Go programs.
+	func main() {
+		var wg sync.WaitGroup
+		wg.Add(maxGoroutines)
+
+		// Create the pool to manage our connections.
+		p, err := pool.New(createConnection, pooledResources)
+		if err != nil {
+			log.Println(err)
+		}
+
+		// Perform queries using connections from the pool.
+		for query := 0; query < maxGoroutines; query++ {
+			// Each goroutine needs its own copy of the query
+			// value else they will all be sharing the same query
+			// variable.
+			go func(q int) {
+				performQueries(q, p)
+				wg.Done()
+			}(query)
+		}
+
+		// Wait for the goroutines to finish.
+		wg.Wait()
+
+		// Close the pool.
+		log.Println("Shutdown Program.")
+		p.Close()
+	}
+
+	// performQueries tests the resource pool of connections.
+	func performQueries(query int, p *pool.Pool) {
+		// Acquire a connection from the pool.
+		conn, err := p.Acquire()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		// Release the connection back to the pool.
+		defer p.Release(conn)
+
+		// Wait to simulate a query response.
+		time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+		log.Printf("Query: QID[%d] CID[%d]\n", query, conn.(*dbConnection).ID)
+	}
+
+work
+	work 包的目的是展示如何使用无缓冲的通道来创建一个goroutine 池，这些goroutine 执行并控制一组工作，让其并发执行。在这种情况下，使用无缓冲的通道要比随意指定一个缓冲区大
+	小的有缓冲的通道好，因为这个情况下既不需要一个工作队列，也不需要一组goroutine 配合执行。无缓冲的通道保证两个goroutine 之间的数据交换。这种使用无缓冲的通道的方法允许使用
+	者知道什么时候goroutine 池正在执行工作，而且如果池里的所有goroutine 都忙，无法接受新的工作的时候，也能及时通过通道来通知调用者。使用无缓冲的通道不会有工作在队列里丢失或者
+	卡住，所有工作都会被处理。
+	
+	// Example provided with help from Jason Waldrip.
+	// Package work manages a pool of goroutines to perform work.
+	package work
+
+	import "sync"
+
+	// Worker must be implemented by types that want to use
+	// the work pool.
+	type Worker interface {
+		Task()
+	}
+
+	// Pool provides a pool of goroutines that can execute any Worker
+	// tasks that are submitted.
+	type Pool struct {
+		work chan Worker
+		wg   sync.WaitGroup
+	}
+
+	// New creates a new work pool.
+	func New(maxGoroutines int) *Pool {
+		p := Pool{
+			work: make(chan Worker),
+		}
+
+		p.wg.Add(maxGoroutines)
+		for i := 0; i < maxGoroutines; i++ {
+			go func() {
+				for w := range p.work {
+					w.Task()
+				}
+				p.wg.Done()
+			}()
+		}
+
+		return &p
+	}
+
+	// Run submits work to the pool.
+	func (p *Pool) Run(w Worker) {
+		p.work <- w
+	}
+
+	// Shutdown waits for all the goroutines to shutdown.
+	func (p *Pool) Shutdown() {
+		close(p.work)
+		p.wg.Wait()
+	}
+
+	-------------------------------------------------------
+	
+	// This sample program demonstrates how to use the work package
+	// to use a pool of goroutines to get work done.
+	package main
+
+	import (
+		"log"
+		"sync"
+		"time"
+
+		"github.com/goinaction/code/chapter7/patterns/work"
+	)
+
+	// names provides a set of names to display.
+	var names = []string{
+		"steve",
+		"bob",
+		"mary",
+		"therese",
+		"jason",
+	}
+
+	// namePrinter provides special support for printing names.
+	type namePrinter struct {
+		name string
+	}
+
+	// Task implements the Worker interface.
+	func (m *namePrinter) Task() {
+		log.Println(m.name)
+		time.Sleep(time.Second)
+	}
+
+	// main is the entry point for all Go programs.
+	func main() {
+		// Create a work pool with 2 goroutines.
+		p := work.New(2)
+
+		var wg sync.WaitGroup
+		wg.Add(100 * len(names))
+
+		for i := 0; i < 100; i++ {
+			// Iterate over the slice of names.
+			for _, name := range names {
+				// Create a namePrinter and provide the
+				// specific name.
+				np := namePrinter{
+					name: name,
+				}
+
+				go func() {
+					// Submit the task to be worked on. When RunTask
+					// returns we know it is being handled.
+					p.Run(&np)
+					wg.Done()
+				}()
+			}
+		}
+
+		wg.Wait()
+
+		// Shutdown the work pool and wait for all existing work
+		// to be completed.
+		p.Shutdown()
+	}
+
+	
+****************************************************************************************************************************************
+第8章：标准库；
+
+记录日志
+	Ldate = 1 << iota
+	// 时间: 01:23:23
+	Ltime
+	
+	这个关键字让编译器为每个常量复制相同的表达式，直到声明区结束，或者遇到一个新的赋值语句。关键字iota 的另一个功能是，iota 的初始值为0，之后iota 的值在每次处理为常量后，都会自增1。
+	
+	// This sample program demonstrates how to use the base log package.
+	package main
+
+	import (
+		"log"
+	)
+
+	func init() {
+		log.SetPrefix("TRACE: ")
+		log.SetFlags(log.Ldate | log.Lmicroseconds | log.Llongfile)
+	}
+
+	func main() {
+		// Println writes to the standard logger.
+		log.Println("message")
+
+		// Fatalln is Println() followed by a call to os.Exit(1).
+		log.Fatalln("fatal message")
+
+		// Panicln is Println() followed by a call to panic().
+		log.Panicln("panic message")
+	}
+
+编码/解码
+	// This sample program demonstrates how to decode a JSON response
+	// using the json package and NewDecoder function.
+	package main
+
+	import (
+		"encoding/json"
+		"fmt"
+		"log"
+		"net/http"
+	)
+
+	type (
+		// gResult maps to the result document received from the search.
+		gResult struct {
+			GsearchResultClass string `json:"GsearchResultClass"`
+			UnescapedURL       string `json:"unescapedUrl"`
+			URL                string `json:"url"`
+			VisibleURL         string `json:"visibleUrl"`
+			CacheURL           string `json:"cacheUrl"`
+			Title              string `json:"title"`
+			TitleNoFormatting  string `json:"titleNoFormatting"`
+			Content            string `json:"content"`
+		}
+
+		// gResponse contains the top level document.
+		gResponse struct {
+			ResponseData struct {
+				Results []gResult `json:"results"`
+			} `json:"responseData"`
+		}
+	)
+
+	func main() {
+		uri := "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&rsz=8&q=golang"
+
+		// Issue the search against Google.
+		resp, err := http.Get(uri)
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Decode the JSON response into our struct type.
+		var gr gResponse
+		err = json.NewDecoder(resp.Body).Decode(&gr)
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+
+		fmt.Println(gr)
+
+		// Marshal the struct type into a pretty print
+		// version of the JSON document.
+		pretty, err := json.MarshalIndent(gr, "", "    ") //把gr转化为pretty字节byte[]
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+
+		fmt.Println(string(pretty))
+	}
+
+	----------------------------------------------------------
+	
+	// This sample program demonstrates how to decode a JSON string.
+	package main
+
+	import (
+		"encoding/json"
+		"fmt"
+		"log"
+	)
+
+	// Contact represents our JSON string.
+	type Contact struct {
+		Name    string `json:"name"`
+		Title   string `json:"title"`
+		Contact struct {
+			Home string `json:"home"`
+			Cell string `json:"cell"`
+		} `json:"contact"`
+	}
+
+	// JSON contains a sample string to unmarshal.
+	var JSON = `{
+		"name": "Gopher",
+		"title": "programmer",
+		"contact": {
+			"home": "415.333.3333",
+			"cell": "415.555.5555"
+		}
+	}`
+
+	func main() {
+		// Unmarshal the JSON string into our variable.
+		var c Contact
+		err := json.Unmarshal([]byte(JSON), &c)
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+
+		fmt.Println(c)
+	}
+
+	----------------------------------------------------------
+	
+	// This sample program demonstrates how to decode a JSON string.
+	package main
+
+	import (
+		"encoding/json"
+		"fmt"
+		"log"
+	)
+
+	// JSON contains a sample string to unmarshal.
+	var JSON = `{
+		"name": "Gopher",
+		"title": "programmer",
+		"contact": {
+			"home": "415.333.3333",
+			"cell": "415.555.5555"
+		}
+	}`
+
+	func main() {
+		// Unmarshal the JSON string into our map variable.
+		var c map[string]interface{}
+		err := json.Unmarshal([]byte(JSON), &c)
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+
+		fmt.Println("Name:", c["name"])
+		fmt.Println("Title:", c["title"])
+		fmt.Println("Contact")
+		fmt.Println("H:", c["contact"].(map[string]interface{})["home"])
+		fmt.Println("C:", c["contact"].(map[string]interface{})["cell"])
+	}
+
+	----------------------------------------------------------
+	
+	// This sample program demonstrates how to marshal a JSON string.
+	package main
+
+	import (
+		"encoding/json"
+		"fmt"
+		"log"
+	)
+
+	func main() {
+		// Create a map of key/value pairs.
+		c := make(map[string]interface{})
+		c["name"] = "Gopher"
+		c["title"] = "programmer"
+		c["contact"] = map[string]interface{}{
+			"home": "415.333.3333",
+			"cell": "415.555.5555",
+		}
+
+		// Marshal the map into a JSON string.
+		data, err := json.MarshalIndent(c, "", "    ")
+		if err != nil {
+			log.Println("ERROR:", err)
+			return
+		}
+
+		fmt.Println(string(data))
+	}
+
+输入和输出
+	// Sample program to show how different functions from the
+	// standard library use the io.Writer interface.
+	package main
+
+	import (
+		"bytes"
+		"fmt"
+		"os"
+	)
+
+	// main is the entry point for the application.
+	func main() {
+		// Create a Buffer value and write a string to the buffer.
+		// Using the Write method that implements io.Writer.
+		var b bytes.Buffer
+		b.Write([]byte("Hello "))
+
+		// Use Fprintf to concatenate a string to the Buffer.
+		// Passing the address of a bytes.Buffer value for io.Writer.
+		fmt.Fprintf(&b, "World!")
+
+		// Write the content of the Buffer to the stdout device.
+		// Passing the address of a os.File value for io.Writer.
+		b.WriteTo(os.Stdout)
+	}
+
+	--------------------------------------------------------------------
+	
+	// Sample program to show how to write a simple version of curl using
+	// the io.Reader and io.Writer interface support.
+	package main
+
+	import (
+		"io"
+		"log"
+		"net/http"
+		"os"
+	)
+
+	// main is the entry point for the application.
+	func main() {
+		// r here is a response, and r.Body is an io.Reader.
+		r, err := http.Get(os.Args[1])
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		// Create a file to persist the response.
+		file, err := os.Create(os.Args[2])
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer file.Close()
+
+		// Use MultiWriter so we can write to stdout and
+		// a file on the same write operation.
+		dest := io.MultiWriter(os.Stdout, file)
+
+		// Read the response and write to both destinations.
+		io.Copy(dest, r.Body)
+		if err := r.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}
+
+
+****************************************************************************************************************************************
+第9章：测试和性能；
+
+
+
+
+
+
+
+
+
+
+
