@@ -225,6 +225,10 @@ Paxos算法
 	P2c:如果一个编号为n的提案具有value v，那么存在一个多数派，要么他们中所有人都没有批准(accept)编号小于n的任何提案，
 		要么他们已经选中(accpet)的所有编号小于n的提案中编号最大的那个提案具有value v;
 
+算法优化
+1、Acceptor批准一个提案就发送给Learner，已通知哪些提案被选中了（其实不要这步骤也会最终选中一个提案的），交互次数要Acceptor * Learner，优化1，可以选出一个主Learner，Acceptor把信息传给主Learner，主Learner再扩散给从Learner，交互次数只需Acceptor + Learner，但存在Learner单点，所以主Learner应该是一个有限的集合；
+2、Prepare1、Prepare2在prepare阶段一第一地递增发送，则会陷入死循环，所以一般只需要一个主Preparor进行提案即可，其他Preparor做备用即可；
+
 角色：Proposer、Acceptor；
 
 阶段：Prepare、Accept；
