@@ -451,3 +451,22 @@ S0     S1    E     O       P        YGC YGCT FGC FGCT  GCT
  
 从图中可以看出，这个线程存在问题，队列LinkedBlockingQueue所引用的大量对象并未释放，导致整个线程占用内存高达378m，此时通知开发人员进行代码优化，将相关对象释放掉即可。
 
+jps：用于列出Java的进程；
+jstat：查看堆的详情；
+jinfo：可以用来查看正在运行的Java应用程序的扩展参数，甚至在运行时修改部分参数；
+ 	jinfo  <option>  <pid>
+	jinfo -flag MaxTenuringThreshold 31518
+	-XX:MaxTenuringThreshold=15
+jmap：命令主要用于生成堆快照文件；
+ 	jmap -dump:format=b,file=heap.hprof 31531
+	Dumping heap to /Users/caojie/heap.hprof ...
+	Heap dump file created
+jhat：工具可以分析Java应用程序的堆快照文件；
+	jhat heap.hprof
+jstack：可用于导出Java应用程序的线程堆栈信息；
+	jstack -l <pid>
+jstatd：命令是一个RMI服务器程序，它的作用相当于代理服务器，建立本地计算机与远程监控工具的通信，jstatd服务器能够将本机的Java应用程序信息传递到远程计算机；
+hprof：工具可以用于监控Java应用程序在运行时的CPU信息和堆信息；
+Visual VM：是一个功能强大的多合一故障诊断和性能监控的可视化工具，它集成了多种性能统计工具的功能，使用Visual VM可以替代jstat、jmap、jhat、jstack等工具。在命令行输入jvisualvm即可启动visualvm。
+BTrace：是一款功能强大的性能检测工具，它可以在不停机的情况下，通过字节码注入，动态监控系统的运行情况，它可以跟踪指定的方法调用、构造函数调用和系统内存等信息；
+MAT：是一款功能强大的Java堆内存分析器，可以用于查找内存泄露以及查看内存消耗情况；
