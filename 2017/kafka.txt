@@ -58,7 +58,8 @@
 	4、leader选举；
 	5、broker加入集群、崩溃管理；
 	
-	
+exactly-once
+https://blog.csdn.net/zhangjun5965/article/details/78218169
 	
 	
 	
