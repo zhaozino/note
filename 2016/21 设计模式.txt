@@ -1,4 +1,3 @@
-
 1整体架构设计
 2业务领域抽象、建模
 3服务规划与层次划分
@@ -41,6 +40,7 @@
 工厂方法模式：Collection.iterator();
 单例模式：Runtime.getRuntime();
 代理模式：反射、动态代理、advice；
+装饰器模式：BufferedInputStream；
 桥梁模式：JDBC驱动器；
 模板模式：HttpServlet的service方法，调用1个或7个do方法；
 观察者模式：observer、observable;
@@ -56,7 +56,8 @@
 	Adapter extends Adaptee implements Targe
 	Client Adapter obj;
 	
-2、状态模式
+？？？在哪里用到
+2、状态模式：https://www.runoob.com/design-pattern/state-pattern.html
 	角色：context、state、stateA、stateB；
 	context(state、+request)、state(+handle(context));
 	当一个对象的内在状态改变时允许改变其行为，这个对象看起来像是改变了其类；
@@ -69,17 +70,27 @@
 	定义一个操作中的算法的骨架，而将步骤延迟到子类中。模板方法使得子类可以不改变一个算法的结构即可重定义算法的某些特定步骤；
 
 5、简单工厂模式/工厂方法模式/抽象工厂模式；
-	抽象工厂（日系工厂/美系工厂 —— 车：两厢车/三厢车 —— 日系两厢车/日系三厢车、美系两厢车/美系三厢车）;
+	简单工厂模式：https://www.runoob.com/design-pattern/factory-pattern.html
+	工厂方法模式：http://c.biancheng.net/view/1348.html
+	抽象工厂模式：https://www.runoob.com/design-pattern/abstract-factory-pattern.html
+	抽象工厂：
+		产品等级：联想、苹果；
+		产品族：手机、笔记本；
+		抽象工厂：手机长、笔记本长；
+		具体工厂：联想手机、苹果手机；联想笔记本、苹果笔记本；
 
-6、单例模式；懒汉、饿汉、双检锁；
+6、单例模式；懒汉、饿汉、双检锁；https://www.runoob.com/design-pattern/singleton-pattern.html
 	确保某个类只有一个实例，自行实例化并向整个系统提供这个实例；
 	
-7、迭代子
+7、迭代子：https://www.runoob.com/design-pattern/iterator-pattern.html
 	角色：Iterator（抽象迭代子）、ConcreteIterator（迭代子）、聚集角色（Aggregate）、具体聚集角色（ConcreteAggregate）;
 	Iterator(ConcreteIterator、+next())、Aggregate(+iterator());
 	可以顺序地访问一个聚集中的元素而不必暴露聚集的内部表象；
-	
+
+？？？	
 8、访问者
+	http://c.biancheng.net/view/1397.html
+	https://www.runoob.com/design-pattern/visitor-pattern.html
 	角色：Visitor、VisitorA、VisitorB、Node、NodeA、NodeB、ObjectStrcture、client；
 	Visitor(+visite(NodeA)、+visite(NodeB))、Node(+accept(Visitor));
 	当系统中存在一个较为复杂的对象结构，且不同访问者对其所采取的操作也不相同时，可以考虑使用访问者模式进行设计。
@@ -89,19 +100,19 @@
 	
 10、原型模式
 	克隆；
-	
-11、建造者模式
+
+11、建造者模式：http://c.biancheng.net/view/1354.html
 	角色：Builder（抽象建造者）、ConcreteBuilder（具体建造者）、Director（导演者）、Product（产品）;
 	Builder(+buildPart1()、+buildPart2()、+retrieveResult:product)、Director(Builder、+construct());
 	将一个复杂的构建与其表示相分离，使得同样的构建过程可以创建不同的表示。 [构建与表示分离，同构建不同表示]
 	
-12、代理模式
+12、代理模式：https://www.runoob.com/design-pattern/proxy-pattern.html
 	角色：subject、ProxySubject、RealSubject;
 	subject(+request())、ProxySubject(RealSubject、request()、+preRequest()、+postRequest())、RealSubject(+request());
 	给某一个对象提供一个代理对象，并由代理对象控制对原对象的引用。
 	反射、动态代理；
 	
-13、装饰者模式
+13、装饰者模式：https://blog.csdn.net/lyabc123456/article/details/80089497
 	角色：Component（抽象构件）、ConcreteComponent（具体构件）、Decorator（装饰者模式）、ConcreteDecorator（具体装饰者模式）;
 	Component(+sampleOperation())、Decorator(Component、+sampleOperation());
 	装饰模式以对客户透明的方式动态地给一个对象附加上更多的责任；
@@ -111,41 +122,46 @@
 	2、装饰模式是以对客户端透明的方式扩展对象的功能，是继承方案的一个替代方案；代理模式则是给一个对象提供一个代理对象，并由代理对象来控制对原有对象的引用；
 	3、装饰模式是为装饰的对象增强功能；而代理模式对代理的对象施加控制，但不对对象本身的功能进行增强；
 	
-14、组合模式
+14、组合模式：https://www.runoob.com/design-pattern/composite-pattern.html
 	角色：Component（抽象节点）、Composite（子节点）、Leaf（叶子节点）
 	Component(Composite、+sampleOperation())、Composite(Vector<Component>、+sampleOperation()、+add/remove())、Leaf(+sampleOperation());
 	
-15、桥接模式
+？？？	
+15、桥接模式：https://www.cnblogs.com/adamjwh/p/9033548.html
 	角色：抽象化角色（Abstraction）、修正抽象化角色（Refined Abstraction）、实现化角色（Implementor）、具体实现化角色（Concrete Implementor）;
 	Abstraction(Implementor、+operation())、Implementor(+operationImpl());
 	将抽象化与实现化脱藕，使得二者可以独立地变化；
 	
-16、观察者模式
+？？？
+16、观察者模式：https://www.runoob.com/design-pattern/observer-pattern.html
 	角色：Subject（抽象主题）、ConcreteSubject（具体主题）、Observer（抽象观察者）、ConcreteObserver（具体观察者）；
 	Subject(Vector<Observer>、+notify()、+add(Observer)、+remove(Observer)); Observer(+update());
 	观察者模式可以实现表示层和数据逻辑层的分离；
 	有时被称作发布/订阅模式，观察者模式定义了一种一对多的依赖关系，让多个观察者对象同时监听某一个主题对象。
 		这个主题对象在状态发生变化时，会通知所有观察者对象，使它们能够自动更新自己。
 	java观察者模式的实现；
-	
-17、策略模式
+
+？？？
+17、策略模式：https://www.runoob.com/design-pattern/strategy-pattern.html
 	角色：Context、Strategy、ConcreteStrategy;
 	行为：contextInterface、strategyInterface;
 		Context(strategy、+operate())、Strategy(+operate());
 	针对一组算法，将每一个算法封装到具有共同接口的独立的类中，从而使得它们可以互相替换。策略模式使得算法可以在不影响到客户端的情况下发生变化；
 	
+忽略
 18、备忘录模式
 	角色：备忘录(Memento)、发起人(Originator)、负责人(Caretaker)
 	Memento(state、+get/set)、Originator(state、+createMemento()、+resotoreMemento(Memento))、Caretaker(Memento、+get/set);
 	备忘录模式意在不破坏封装的情况下，将一个对象的状态捕捉住，并外部化，存储起来，从而可以在将来合适的时候把这个对象还原到存储起来的状态。
 	
-19、职责链模式
+19、职责链模式：https://www.runoob.com/design-pattern/chain-of-responsibility-pattern.html
 	角色：抽象处理者（Handler）、具体处理者（ConcreteHandler）
 	行为：handleRequest;
 	Handler(successer、+handleRequest);
 	将请求的发送者和请求的处理者解耦；
 	
-20、命令模式
+？？？
+20、命令模式：https://www.cnblogs.com/jmcui/p/10042235.html
 	角色：client、invoker、receiver、command/concreteCommand;
 	Invoker(command、action())、Command(execute())、ConcreteCommand、Receiver(action());
 	Receiver receiver = new Receiver();
@@ -155,7 +171,8 @@
 	请求者发送命令给接收者，接收者执行业务逻辑；所以，业务逻辑是在接收者的行为中定义的；
 	通过命令角色，实现了请求者与接收者的解耦；
 	
-21、中介者模式
+？？？
+21、中介者模式：https://www.cnblogs.com/adamjwh/p/10959987.html
 	角色：Meditor、ConcreteMeditor、Colleague、ColleagueA、ColleagueB；
 	抽象调停者、具体调停者、抽象同事类、具体同事类；
 	Meditor(+colleagueChanged:void);
@@ -167,7 +184,7 @@
 	中介者模式可将各同事对象解耦。中介者有利于各同事之间的松耦合，我们可以独立的改变和复用每一个同事和中介者，
 	增加新的中介者和新的同事类都比较方便，更好地符合“开闭原则”。
 	
-22、表达式模式
+22、表达式模式/解释器模式：https://www.cnblogs.com/adamjwh/p/10938852.html
 	角色：client、Context、Expression、TerminalExpression、NonTermianlExpression；
 	客户端、上下文、抽象表达式、终结表达式、非终结表达式；
 	AbstractExpression(+interpret(Map));
@@ -176,34 +193,5 @@
 	Context(Map、String[]、stack);
 	解释器是一个简单的语法解释器，最显著的优点是扩展性，扩展语法，只要增加非终结符类就可以了；
 	缺点有非终结类膨胀，递归循环影响性能；
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
 	
 	
