@@ -204,7 +204,15 @@ dubbo
 		
 	4、dubbo.xml的优先级高于dubbo.properties
 	
-	
+dubbo ioc di
+spi 
+ExtensionLoader.getExtensionLoader(type);
+loader.getAdaptiveExtension();
+通过set javassit注入，adaptive则通过url参数等动态注入
+iop
+wrapper实现
+ProtocolFilterWrapper
+ProtocolListenerWrapper
 	
 	
 	
