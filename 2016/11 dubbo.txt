@@ -139,6 +139,11 @@ dubbo
 		缺省用160份虚拟节点，如果要修改，请配置<dubbo:parameter key="hash.nodes" value="320" />
 		
 15、线程模型
+	Dubbo默认的底层网络通讯使用的是Netty，服务提供方NettyServer使用两级线程池，其中 EventLoopGroup(boss) 主要用来接受客户端的链接请求，
+	并把接受的请求分发给 EventLoopGroup(worker) 来处理，boss和worker线程组我们称之为IO线程。
+	如果服务提供方的逻辑能迅速完成，并且不会发起新的IO请求，那么直接在IO线程上处理会更快，因为这减少了线程池调度。
+	但如果处理逻辑很慢，或者需要发起新的IO请求，比如需要查询数据库，则IO线程必须派发请求到新的线程池进行处理，否则IO线程会阻塞，将导致不能接收其它请求。
+	
 	Dispatcher
 		all 所有消息都派发到线程池，包括请求，响应，连接事件，断开事件，心跳等。
 		direct 所有消息都不派发到线程池，全部在IO线程上直接执行。
