@@ -16,6 +16,11 @@
 		同时，它利用直接存储器访问技术（Direct Memory Access，DMA）执行I/O操作，因此也避免了OS内核缓冲区之间的数据拷贝，即零拷贝；
 		linux提供的sendfile系统调用实现了这种零拷贝技术，而kafka的消息消费机制使用的就是sendfile，通过java的FileChannel.transferTo方法实现的；
 	
+	Kafka server读消息传送到消费者
+	传统：硬盘—>内核buf—>用户buf—>socket相关缓冲区—>协议引擎
+	sendfile：硬盘->内核buf->socket相关缓冲区->协议引擎
+	
+	
 2、负载均衡/故障转移：partition leader
 	kafka只有partition leader进行读写，副本是不提供读写功能的，只是简单地从leader同步数据；
 	
