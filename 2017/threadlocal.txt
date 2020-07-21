@@ -1,0 +1,112 @@
+
+CurrentMap实现方式：
+	get方法不需要加锁，使用volatile，遇到扩容，节点会有扩容标志，所以数据不会报错；
+	1.7 
+		segment[] extends ReentrantLock
+		hashEntry[] + 链表
+		扩容两倍
+	1.8
+		node[] + 链表/红黑树（8个节点） + CAS
+		put如果节点不存在，cas，如果存在sync
+		
+	
+红黑树
+	（1）每个节点只有两种颜色：红色和黑色。
+	（2）根节点是黑色的。
+	（3）每个叶子节点（NIL）都是黑色的空节点。
+	（4）从根节点到叶子节点，不会出现两个连续的红色节点。
+	（5）从任何一个节点出发，到叶子节点，这条路径上都有相同数目的黑色节点。
+
+循环无锁队列实现方案：
+	伪共享/伪缓存行：缓存行大小为32字节到256字节不等,通常来说为64字节。
+	CAS、数组；
+	指令重排/乱序：编译器重排、CPU重排
+	
+ThreadLocal原理：
+	ThreadLocal<MyObj> t = new ThreadLocal<>();
+	t.set(myObj);
+	String str = t.get();
+	
+	如果myObj设为null，myObj是否会被回收，不会，因为t还在强引用，所以要用弱引用；
+	
+	public void set(T value) {
+        Thread t = Thread.currentThread();
+        ThreadLocalMap map = getMap(t);
+        if (map != null)
+            map.set(this, value);
+        else
+            createMap(t, value);
+    }
+	
+	Thread类里有属性变量：
+	ThreadLocal.ThreadLocalMap threadLocals = null;
+
+	弱引用， 当一个对象仅仅被weak reference（弱引用）指向, 而没有任何其他strong reference（强引用）指向的时候, 如果这时GC运行, 那么这个对象就会被回收，
+	不论当前的内存空间是否足够，这个对象都会被回收。
+	
+	Salad salad = new Salad(new Apple("红富士"));
+	System.gc();
+	//通过WeakReference的get()方法获取Apple
+	System.out.println("Apple:" + salad.get()); //为null
+
+	public class ThreadLocal<T> {
+	
+		static class ThreadLocalMap {
+			
+			static class Entry extends WeakReference<ThreadLocal> {
+				/** The value associated with this ThreadLocal. */
+				Object value;
+
+				Entry(ThreadLocal k, Object v) {  //k是threadLocal实例，因为一个线程有可能有多个threadLocal变量；
+					super(k);
+					value = v;
+				}
+			}
+
+			/**
+			 * The initial capacity -- MUST be a power of two.
+			 */
+			private static final int INITIAL_CAPACITY = 16;
+
+			/**
+			 * The table, resized as necessary.
+			 * table.length MUST always be a power of two.
+			 */
+			private Entry[] table;
+
+			/**
+			 * The number of entries in the table.
+			 */
+			private int size = 0;
+
+			/**
+			 * The next size value at which to resize.
+			 */
+			private int threshold; // Default to 0
+
+			ThreadLocalMap(ThreadLocal firstKey, Object firstValue) {
+				table = new Entry[INITIAL_CAPACITY];
+				int i = firstKey.threadLocalHashCode & (INITIAL_CAPACITY - 1);
+				table[i] = new Entry(firstKey, firstValue);
+				size = 1;
+				setThreshold(INITIAL_CAPACITY);
+			}
+		}
+		
+	}
+	
+总结：
+	每个Thread类里有一个属性ThreadLocal.ThreadLocalMap，map中是Entity[]，Entity定义：
+	static class Entry extends WeakReference<ThreadLocal> { //弱引用防止内存泄漏
+		/** The value associated with this ThreadLocal. */
+		Object value;
+		
+		Entry(ThreadLocal k, Object v) {  //k是threadLocal实例，因为一个线程有可能有多个threadLocal变量；
+			super(k);
+			value = v;
+		}
+	}
+	
+	事实上，在ThreadLocalMap中的set/getEntry方法中，会对key为null（也即是ThreadLocal为null）进行判断，如果为null的话，那么是会对value置为null的。
+	
+	
