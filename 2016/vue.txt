@@ -1,0 +1,260 @@
+<div id="vue_det">
+    <h1>site : {{site}}</h1>
+    <h1>url : {{url}}</h1>
+    <h1>{{details()}}</h1>
+</div>
+<script type="text/javascript">
+    var vm = new Vue({
+        el: '#vue_det',
+        data: {
+            site: "菜鸟教程",
+            url: "www.runoob.com",
+            alexa: "10000"
+        },
+		computed: {
+			// 计算属性的 getter
+			reversedMessage: function () {
+			  // `this` 指向 vm 实例
+			  return this.message.split('').reverse().join('')
+			}
+		},
+        methods: {
+            details: function() {
+                return  this.site + " - 学的不仅是技术，更是梦想！";
+            }
+        }
+    })
+</script>
+
+我们可以使用 methods 来替代 computed，效果上两个都是一样的，但是 computed 是基于它的依赖缓存，只有相关依赖发生改变时才会重新取值。
+而使用 methods ，在重新渲染的时候，函数总会重新调用执行。
+
+1、<div v-html="message"></div>
+	v-html 指令用于输出 html 代码；
+	
+2、<div v-bind:class="{'class1': use}">v-bind:class 指令</div>
+   <div v-bind:id="'list-' + id">菜鸟教程</div>
+   <pre><a v-bind:href="url">菜鸟教程</a></pre>
+   <div v-bind:style="{ color: activeColor, fontSize: fontSize + 'px' }">菜鸟教程</div>
+    <input type="radio" id="runoob" value="Runoob" v-model="picked">
+	
+3、表达式
+	{{ message.split('').reverse().join('') }}
+	
+指令
+4、<p v-if="seen">现在你看到我了</p>
+	<input v-model="message">
+	
+5、<div v-bind:id="rawId | formatId"></div>过滤器，一般时间格式等；
+
+6、<li v-for="site in sites">
+      {{ site.name }}
+    </li>
+
+7、get/set
+	var vm = new Vue({
+	  el: '#app',
+	  data: {
+		name: 'Google',
+		url: 'http://www.google.com'
+	  },
+	  computed: {
+		site: {
+		  // getter
+		  get: function () {
+			return this.name + ' ' + this.url
+		  },
+		  // setter
+		  set: function (newValue) {
+			var names = newValue.split(' ')
+			this.name = names[0]
+			this.url = names[names.length - 1]
+		  }
+		}
+	  }
+	})
+	// 调用 setter， vm.name 和 vm.url 也会被对应更新
+	vm.site = '菜鸟教程 http://www.runoob.com';
+	document.write('name: ' + vm.name);
+	document.write('<br>');
+	document.write('url: ' + vm.url);
+
+8、watch
+	<div id = "app">
+		<p style = "font-size:25px;">计数器: {{ counter }}</p>
+		<button @click = "counter++" style = "font-size:25px;">点我</button>
+	</div>
+	<script type = "text/javascript">
+	var vm = new Vue({
+		el: '#app',
+		data: {
+			counter: 1
+		}
+	});
+	vm.$watch('counter', function(nval, oval) {
+		alert('计数器值的变化 :' + oval + ' 变为 ' + nval + '!');
+	});
+	</script>
+	
+9、VUE组件
+	Vue.component(tagName, options)
+	tagName></tagName>
+	
+10、Prop
+	prop 是子组件用来接受父组件传递过来的数据的一个自定义属性。
+	父组件的数据需要通过 props 把数据传给子组件，子组件需要显式地用 props 选项声明 "prop"：
+	
+	<div id="app">
+		<child message="hello!"></child>
+	</div>
+	 
+	<script>
+	// 注册
+	Vue.component('child', {
+	  // 声明 props
+	  props: ['message'],
+	  // 同样也可以在 vm 实例中像 "this.message" 这样使用
+	  template: '<span>{{ message }}</span>'
+	})
+	// 创建根实例
+	new Vue({
+	  el: '#app'
+	})
+	</script>
+
+11、动态Prop
+	<div id="app">
+		<div>
+		  <input v-model="parentMsg">
+		  <br>
+		  <child v-bind:message="parentMsg"></child>
+		</div>
+	</div>
+	 
+	<script>
+	// 注册
+	Vue.component('child', {
+	  // 声明 props
+	  props: ['message'],
+	  // 同样也可以在 vm 实例中像 "this.message" 这样使用
+	  template: '<span>{{ message }}</span>'
+	})
+	// 创建根实例
+	new Vue({
+	  el: '#app',
+	  data: {
+		parentMsg: '父组件内容'
+	  }
+	})
+	</script>
+
+12、自定义指令：除了默认设置的核心指令( v-model 和 v-show ), Vue 也允许注册自定义指令。
+	<div id="app">
+		<p>页面载入时，input 元素自动获取焦点：</p>
+		<input v-focus>
+	</div>
+	 
+	<script>
+	// 注册一个全局自定义指令 v-focus
+	Vue.directive('focus', {
+	  // 当绑定元素插入到 DOM 中。
+	  inserted: function (el) {
+		// 聚焦元素
+		el.focus()
+	  }
+	})
+	// 创建根实例
+	new Vue({
+	  el: '#app'
+	})
+	</script>
+	
+13、路由vue-router
+	<div id="app">
+	  <h1>Hello App!</h1>
+	  <p>
+		<!-- 使用 router-link 组件来导航. -->
+		<!-- 通过传入 `to` 属性指定链接. -->
+		<!-- <router-link> 默认会被渲染成一个 `<a>` 标签 -->
+		<router-link to="/foo">Go to Foo</router-link>
+		<router-link to="/bar">Go to Bar</router-link>
+	  </p>
+	  <!-- 路由出口 -->
+	  <!-- 路由匹配到的组件将渲染在这里 -->
+	  <router-view></router-view>
+	</div>
+
+	<script>
+	// 0. 如果使用模块化机制编程，導入Vue和VueRouter，要调用 Vue.use(VueRouter)
+
+	// 1. 定义（路由）组件。
+	// 可以从其他文件 import 进来
+	const Foo = { template: '<div>foo</div>' }
+	const Bar = { template: '<div>bar</div>' }
+
+	// 2. 定义路由
+	// 每个路由应该映射一个组件。 其中"component" 可以是
+	// 通过 Vue.extend() 创建的组件构造器，
+	// 或者，只是一个组件配置对象。
+	// 我们晚点再讨论嵌套路由。
+	const routes = [
+	  { path: '/foo', component: Foo },
+	  { path: '/bar', component: Bar }
+	]
+
+	// 3. 创建 router 实例，然后传 `routes` 配置
+	// 你还可以传别的配置参数, 不过先这么简单着吧。
+	const router = new VueRouter({
+	  routes // （缩写）相当于 routes: routes
+	})
+
+	// 4. 创建和挂载根实例。
+	// 记得要通过 router 配置参数注入路由，
+	// 从而让整个应用都有路由功能
+	const app = new Vue({
+	  router
+	}).$mount('#app')
+
+	// 现在，应用已经启动了！
+	</script>
+	</body>
+
+14、axios ajax
+	new Vue({
+	  el: '#app',
+	  data () {
+		return {
+		  info: null
+		}
+	  },
+	  mounted () {
+		axios
+		  .get('https://www.runoob.com/try/ajax/json_demo.json')
+		  .then(response => (this.info = response))
+		  .catch(function (error) { // 请求失败处理
+			console.log(error);
+		  });
+	  }
+	})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
