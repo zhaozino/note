@@ -226,9 +226,9 @@ META-INF/services/
 
 makeWrapper
 
-SpiExtensionFactory
 AdaptiveExtensionFactory
-SpringExtensionFactory
+  SpiExtensionFactory
+  SpringExtensionFactory
 
 ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
 
