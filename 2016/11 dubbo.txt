@@ -218,15 +218,51 @@ iop
 wrapper实现
 ProtocolFilterWrapper
 ProtocolListenerWrapper
+
+
+META-INF/dubbo/internal/
+META-INF/dubbo/
+META-INF/services/
+
+makeWrapper
+
+SpiExtensionFactory
+AdaptiveExtensionFactory
+SpringExtensionFactory
+
+ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
+
+	getActivateExtension() ：根据条件获取当前扩展可自动激活的实现，list=extensionLoader.getActivateExtension(url,"filterValue",Constants.CONSUMER);根据url中key对应的value查扩展；
+	getExtension(String name) ： 根据名称获取当前扩展的指定实现，最常规的，即在配置文件spi的；
+	getAdaptiveExtension() : 获取当前扩展的自适应实现（@Adaptive注解的实现类，每个扩展点最多只能有一个自适应实现，如果所有实现中没有被@Adaptive注释的，
+		那么dubbo会动态生成一个自适应实现类，如：Protocol$Adpative，默认返回url中的protocol，否则SPI("dubbo")的值，即dubboProtocol）。
+	
+	ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
+	默认的ExtensionFactory实现中，AdaptiveExtensionFactotry被@Adaptive注解注释，也就是它就是ExtensionFactory对应的自适应扩展实现(每个扩展点最多只能有一个自适应实现，
+		如果所有实现中没有被@Adaptive注释的，那么dubbo会动态生成一个自适应实现类)，
+		
 	
 	
-	
-	
-	
-	
-	
-	
-	
+Wapper AOP
+com.alibaba.dubbo.rpc.protocol.ProtocolFilterWrapper
+com.alibaba.dubbo.rpc.protocol.ProtocolListenerWrapper，
+这两个类不含有@Adaptive注解且具有含有Protocol的单参构造器，符合这样条件的会被列入AOP增强类。放置在loader的私有属性cachedWrapperClasses中。
+
+for (Class<?> wrapperClass : wrapperClasses) {
+	instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
+}
+
+public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
+    final Wrapper wrapper = Wrapper.getWrapper(proxy.getClass().getName().indexOf('$') < 0 ? proxy.getClass() : type);//这主要统一调用方式
+            
+    return new AbstractProxyInvoker<T>(proxy, type, url) {
+        @Override
+        protected Object doInvoke(T proxy, String methodName,Class<?>[] parameterTypes,Object[] arguments) 
+		                                                                                   throws Throwable {
+            return wrapper.invokeMethod(proxy, methodName, parameterTypes, arguments);
+        }
+    };
+}
 	
 	
 	
