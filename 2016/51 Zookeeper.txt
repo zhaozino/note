@@ -226,7 +226,9 @@ Paxos算法
 		要么他们已经选中(accpet)的所有编号小于n的提案中编号最大的那个提案具有value v;
 
 算法优化
-1、Acceptor批准一个提案就发送给Learner，已通知哪些提案被选中了（其实不要这步骤也会最终选中一个提案的），交互次数要Acceptor * Learner，优化1，可以选出一个主Learner，Acceptor把信息传给主Learner，主Learner再扩散给从Learner，交互次数只需Acceptor + Learner，但存在Learner单点，所以主Learner应该是一个有限的集合；
+1、Acceptor批准一个提案就发送给Learner，已通知哪些提案被选中了（其实不要这步骤也会最终选中一个提案的），交互次数要Acceptor * Learner，
+	优化1，可以选出一个主Learner，Acceptor把信息传给主Learner，主Learner再扩散给从Learner，交互次数只需Acceptor + Learner，但存在Learner单点，
+	所以主Learner应该是一个有限的集合；
 2、Prepare1、Prepare2在prepare阶段一第一地递增发送，则会陷入死循环，所以一般只需要一个主Preparor进行提案即可，其他Preparor做备用即可；
 
 角色：Proposer、Acceptor；
@@ -235,42 +237,54 @@ Paxos算法
 
 法定集合：大于一半的集合；
 序列号：全局唯一递增序列号；
-
-	初始val为null；
-	初始no为null；
-	初始new_no为全局唯一序列编号；
+两阶段：Prepare、Accept；
+	
 1、提议者向超过一半的决策者发送prepareRequest(new_no)，包含一个全局唯一递增的序列号new_no；
-2、决策者收到prepareRequest请求后，取出自己保存的(no, val)，如果no>new_no, 则丢弃prepareRequest（要通知提议者），否则替换no为new_no，返回(new_no, val);
-3、如果提议者获超过一半的决策者的响应，则从中取出最大序列号对应的new_val，如果new_val为空，则自己随便生成一个；如果没有获得超过一半的决策者响应，则直接跳回步骤1；
+2、决策者收到prepareRequest请求后，取出自己保存的(no, val)，如果no>new_no，则丢弃prepareRequest（要通知提议者），否则替换no为new_no，返回(new_no, (no,val));
+3、如果提议者获超过一半的决策者的响应，则从中取出最大序列号no对应的new_val，如果new_val为空，则自己随便生成一个；如果没有获得超过一半的决策者响应，则直接跳回步骤1；
 4、提议者向超过一半的决策者发起acceptRequest(new_no, new_val)；
-5、决策者收到acceptRequest(new_no, new_val)，若new_no>=no，则批准此请求，并替换val为new_val，丢弃acceptRequest（要通知提议者）；
+5、决策者收到acceptRequest(new_no, new_val)，若new_no>=no，则批准此请求，并替换val为new_val，否则丢弃acceptRequest（要通知提议者）；
 6、提议者如果收到超过一半的批准响应，则确认请求已被批准，否则，跳步骤1；
+	6.1、如果返回多个V，且有一个Vn由多于一半的Acceptor返回，那么Proposer就确认Vn被选中；
+	6.2、如果返回多个V，且没有一个V由多于一半的Acceptor返回，那么Proposer就会把收到的最新的Mm/Vm的Accept请求发送出去（即顶最新的V），重复步骤4/5/6，直到Vm被选中；
 
+只有Accept阶段，才会更改Acceptor保存的提案，Prepare返回的永远是Accept阶段保存的提案；
 
 微信自研生产级 Paxos 类库 PhxPaxos 实现原理介绍
 http://www.tuicool.com/articles/fMR3m2r
 http://mp.weixin.qq.com/s?__biz=MzI4NDMyNTU2Mw==&mid=2247483695&idx=1&sn=91ea422913fc62579e020e941d1d059e&scene=0&utm_source=tuicool&utm_medium=referral
 
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
