@@ -6,6 +6,7 @@
 		1、页缓存时在内存中分配的，所以写入速度非常快；
 		2、kafka不必与底层的文件系统打交道，所有繁琐的I/O操作都交给操作系统处理；
 		3、kafka写入操作采用追加写入（append）的方式，避免了磁盘随机写操作；
+		4、日志压缩，发送压缩；
 		
 	kafka在读取消息时首先从页缓存中读，如果命中，便把消息直接发送到网络的socket上，这个过程就是利用linux平台的sendfile系统调用做到的，
 		即：零拷贝技术（Zero Copy）；
@@ -31,6 +32,10 @@
 	通过ByteBuffer来实现；
 
 5、topic、partition、offset、replica、leader、flower；
+
+	一个partition对应一个log，为了防止log过大，log会被分为多个logSegment，即多个小logSegment文件；
+	一个log对应磁盘上的一个文件夹，每个logSegment对应一个日志文件，一个位移索引文件和一个时间索引文件，以及其他可能的文件，
+	比如：.txnindex为后缀的事务索引文件。
 
 6、ISR：in-sync replica
 	与leader replica保持同步的replica集合，只有这个集合里的replica才能被选举为leader，也只有该集合中所有replica都接收到了同一条消息，
@@ -67,7 +72,14 @@ exactly-once
 https://blog.csdn.net/zhangjun5965/article/details/78218169
 	
 	
+14、生产者幂等性
+	Pid、Sequence递增；pid + partition > sequence；
 	
+15、事务
+	事务可以保证对多个分区写入操作的原子性，多个操作要么全部成功，要么全部失败；
+	对流式应用而言，一个典型的应用模式为consume-transform-produce，在这种模式下消费和生产并存，消费者可能在提交位移时异常导致重复消费，
+	生产者也可能重复生产消息。kafka事务可以使应用程序将消费消息、生产消息、提交消费位移当作原子操作来处理，同时成功或失败，
+	即使该生产、消费可能会跨分取。transactionId和pid一一对应；
 	
 	
 	
