@@ -82,12 +82,13 @@
 5、简单工厂模式/工厂方法模式/抽象工厂模式；
 	简单工厂模式：https://www.runoob.com/design-pattern/factory-pattern.html
 	工厂方法模式：http://c.biancheng.net/view/1348.html
-	抽象工厂模式：https://www.runoob.com/design-pattern/abstract-factory-pattern.html
+	抽象工厂模式：https://baijiahao.baidu.com/s?id=1662476303829489834&wfr=spider&for=pc
 	抽象工厂：
 		产品等级：联想、苹果；
 		产品族：手机、笔记本；
-		抽象工厂：手机长、笔记本长；
-		具体工厂：联想手机、苹果手机；联想笔记本、苹果笔记本；
+		抽象工厂：生产手机、笔记本；
+		具体工厂：联想厂、苹果厂；
+		具体工厂生产：联想手机、联想笔记本；苹果手机、苹果笔记本；
 
 6、单例模式；懒汉、饿汉、双检锁；https://www.runoob.com/design-pattern/singleton-pattern.html
 	确保某个类只有一个实例，自行实例化并向整个系统提供这个实例；
