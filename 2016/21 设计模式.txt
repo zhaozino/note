@@ -5,6 +5,16 @@
 
 ***********************************************************************
 
+面向对象
+1、封装
+隐藏对象的属性和实现细节，仅对外提供公共访问方式，将变化隔离，便于使用，提高复用性和安全性。
+2、继承
+提高代码复用性；继承是多态的前提。
+3、多态
+父类或接口定义的引用变量可以指向子类或具体实现类的实例对象。提高了程序的拓展性。
+
+***********************************************************************
+
 设计模式
 
 依赖：局部变量、方法参数、静态方法调用；
@@ -48,7 +58,7 @@
 
 
 介绍几种你比较熟悉的设计模式，以及在项目中的应用，描述下它们的优缺点：
-	适配器模式、门面模式、代理模式、装饰者模式、模板模式、策略模式、工厂模式、单例模式、迭代子、访问者、享元模式
+	适配器模式、门面模式、模板模式、代理模式、装饰者模式、工厂模式、单例模式、表达式模式；
 	
 1、适配器模式
 	角色：Target（目标接口）、Adaptee（源角色）、Adapter（适配器）；
@@ -194,4 +204,101 @@
 	解释器是一个简单的语法解释器，最显著的优点是扩展性，扩展语法，只要增加非终结符类就可以了；
 	缺点有非终结类膨胀，递归循环影响性能；
 	
+	public abstract class Expression {
+		//解析公式和数值，key是公式中的参数，value是具体的数值
+		public abstract int interpreter(HashMap<String, Integer> var);
+	}
 	
+	public class VarExpression extends Expression {
+
+		private String key;
+
+		public VarExpression(String key) {
+			this.key = key;
+		}
+
+		@Override
+		public int interpreter(HashMap<String, Integer> var) {
+			return var.get(this.key);
+		}
+	}
+	
+	public class SymbolExpression extends Expression {
+
+		protected Expression left;
+		protected Expression right;
+
+		public SymbolExpression(Expression left, Expression right) {
+			this.left = left;
+			this.right = right;
+		}
+
+		@Override
+		public int interpreter(HashMap<String, Integer> var) {
+			// TODO Auto-generated method stub
+			return 0;
+		}
+	}
+	
+	public class AddExpression extends SymbolExpression {
+
+		public AddExpression(Expression left, Expression right) {
+			super(left, right);
+		}
+
+		public int interpreter(HashMap<String, Integer> var) {
+			return super.left.interpreter(var) + super.right.interpreter(var);
+		}
+	}
+	
+	public class SubExpression extends SymbolExpression {
+
+		public SubExpression(Expression left, Expression right) {
+			super(left, right);
+		}
+
+		public int interpreter(HashMap<String, Integer> var) {
+			return super.left.interpreter(var) - super.right.interpreter(var);
+		}
+	}
+	
+	public class Calculator {
+
+		//定义表达式
+		private Expression expression;
+
+		//构造函数传参，并解析
+		public Calculator(String expStr) {
+			//安排运算先后顺序
+			Stack<Expression> stack = new Stack<>();
+			//表达式拆分为字符数组
+			char[] charArray = expStr.toCharArray();
+
+			Expression left = null;
+			Expression right = null;
+			for(int i=0; i<charArray.length; i++) {
+				switch (charArray[i]) {
+				case '+':    //加法
+					left = stack.pop();
+					right = new VarExpression(String.valueOf(charArray[++i]));
+					stack.push(new AddExpression(left, right));
+					break;
+				case '-':    //减法
+					left = stack.pop();
+					right = new VarExpression(String.valueOf(charArray[++i]));
+					stack.push(new SubExpression(left, right));
+					break;
+				default:    //公式中的变量
+					stack.push(new VarExpression(String.valueOf(charArray[i])));
+					break;
+				}
+			}
+			this.expression = stack.pop();
+		}
+
+		//计算
+		public int run(HashMap<String, Integer> var) {
+			return this.expression.interpreter(var);
+		}
+
+	}
