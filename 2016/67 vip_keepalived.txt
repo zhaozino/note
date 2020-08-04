@@ -9,14 +9,17 @@ LVS
 		NAT：网络地址翻译技术，当用户请求到达调度器时，调度器将请求报文的目标地址（即虚拟IP地址）改写为选定的real server地址，同时将报文的
 			目标端口也改成选定的real server的相应端口，最后将报文请求发送到选定的real server。在服务器端得到数据后，real server将数据返回给
 			用户时，需要再次经过负载调度器将报文的源地址和源端口改成虚拟IP地址和相应端口，然后把数据发送给用户，完成整个负载调度过程；
+			通过第三层IP层，Director Server和real server必须在同一个网络；
+			
+		DR：直接路由技术实现虚拟服务器。通过改写请求报文的MAC地址，将请求发送到real server，而real server将响应直接返回给客户，性能最好，
+			但要求Director Server和Real Server必须由一块网卡连在同一物理网段上；
+			通过第二层数据链路层，Director Server和real server必须在同一个物理网络；
 			
 		TUN：通过IP隧道技术实现虚拟服务器。调度器采用IP隧道技术将用户请求转发到某个real server，而这个real server将直接响应用户的请求，不再
 			经过前端调度器。此外，对real server的地域位置没有要求，可以和Director Server位于同一个网段，也可以在独立的一个网段中。
 				隧道技术是一种数据包封装技术，它是将原始IP包（其报头包含原始发送者和最终目的地）封装在另一个数据包（称为封装的IP包）的数据净荷中进行传输。
-				
-		DR：直接路由技术实现虚拟服务器。通过改写请求报文的MAC地址，将请求发送到real server，而real server将响应直接返回给客户，性能最好，
-			但要求Director Server和Real Server必须由一块网卡连在同一物理网段上；
-		
+			通过隧道技术，对网络部署没要求；
+			
 	调度算法
 		1、轮询；2、加权；3、最少连接；4、加权最少连接；5、ip hash；6、url hash；
 	
