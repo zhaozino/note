@@ -117,7 +117,7 @@
 	Builder(+buildPart1()、+buildPart2()、+retrieveResult:product)、Director(Builder、+construct());
 	将一个复杂的构建与其表示相分离，使得同样的构建过程可以创建不同的表示。 [构建与表示分离，同构建不同表示]
 	
-12、代理模式：https://www.runoob.com/design-pattern/proxy-pattern.html
+12、代理模式：https://www.cnblogs.com/daniels/p/8242592.html
 	角色：subject、ProxySubject、RealSubject;
 	subject(+request())、ProxySubject(RealSubject、request()、+preRequest()、+postRequest())、RealSubject(+request());
 	给某一个对象提供一个代理对象，并由代理对象控制对原对象的引用。
