@@ -1,0 +1,115 @@
+
+[root@localhost ~]# route -n
+Kernel IP routing table
+Destination   Gateway         Genmask       Flags Metric Ref Use Iface
+172.190.90.0  0.0.0.0        255.255.255.0   U     0     0    0  eth0
+169.254.0.0   0.0.0.0        255.255.0.0     U     0     0    0  eth1
+192.168.0.0   10.77.238.254  255.255.0.0     UG    0     0    0  eth0
+0.0.0.0       169.254.0.0    0.0.0.0         UG    0     0    0  eth1
+
+前两条是自动生成的，因为是直连的网段，在每块网卡上每配置一个IP就会生成一条记录（一个网卡上可以配置多个IP）。表示去往这两个网段的数据包，直接由网卡接口eth0及eth1发送出去
+
+这两条记录中的gateway并没有意义，Flags那一列中有G时才会使用Gateway。这两条路由并没有这样的标志，由于它们是本地的，匹配这些条目的数据包会直接通过Iface列中的网卡发送出去。
+
+192.168.0.0   10.77.238.254  255.255.0.0     UG    0     0    0  eth0
+表示去往192.168.0.0网段的数据包由网关10.77.238.254通过网卡eth0来转发
+
+0.0.0.0       169.254.0.0    0.0.0.0         UG    0     0    0  eth1
+如果上面都匹配不上，则去往其他所有目标地址数据包由网关169.254.0.0 通过网卡eth1来转发
+
+*************************************************************************************************************
+iptables
+
+我们把具有相同功能的规则的集合叫做"表"，所以说，不同功能的规则，我们可以放置在不同的表中进行管理，而iptables已经为我们定义了4种表，每种表对应了不同的功能，而我们定义的规则也都逃脱不了这4种功能的范围，所以，学习iptables之前，我们必须先搞明白每种表 的作用。
+iptables为我们提供了如下规则的分类，或者说，iptables为我们提供了如下"表"
+
+filter表：负责过滤功能，防火墙；内核模块：iptables_filter
+nat表：network address translation，网络地址转换功能；内核模块：iptable_nat
+mangle表：拆解报文，做出修改，并重新封装 的功能；iptable_mangle
+raw表：关闭nat表上启用的连接追踪机制；iptable_raw
+
+*************************************************************************************************************
+
+当在一台未经特殊配置的ubuntu机器上安装完Docker之后，在宿主机上通过使用ifconfig命令可以看到多了一块名为docker0的网卡，假设IP为172.17.0.1/16。有了这样一块网卡，宿主机也会在内核路由表上添加一条到达相应网络的静态路由，可以通过route -n命令查看
+
+$ route -n
+...
+172.17.0.0  0.0.0.0  255.255.0.0  U  0  0  0  docker0
+此条路由表示所有目的IP地址为172.17.0.0/16的数据包从docker0网卡发出。
+
+docker0网桥是docker daemon启动时自动创建的，其ip默认为172.17.0.1/16，之后创建的docker容器都会在docker0子网的范围内选取一个未占用的IP使用，并连接到docker0网桥上。
+--bip=CIDR：设置docker0的IP地址和子网范围。
+--fixed-cidr=CIDR：限制Docker容器获取IP的范围。Docker容器默认获取的IP范围未Docker网桥的整个子网范围，这个参数可缩小范围。
+
+在docker安装完成后，将默认在宿主机系统上增加一些iptables规则，以用于Docker容器和容器之间以及和外界的通信，可以使用iptables-save命令查看。其中nat表上的POSTROUTING链有这么一条规则：
+-A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE
+
+这条规则关系着Docker容器和外界的通信，含义是将地址为172.17.0.0/16的数据包（即Docker容器发出的数据），当不是从docker0网卡发出时做SNAT（源地址转换，将IP包的源地址替换为相应网卡的地址）。这样一来，从Docker容器访问外网的流量，在外部看来就是从宿主机上发出的，外部感觉不到Docker容器的存在。那么，那么外界想要访问Docker容器的服务时该怎么办？启动容器时端口映射：
+docker run -d -p 5000:5000 demo/nginx /bin/bash
+
+查看iptables规则：iptables-save
+...
+*nat
+-A DOCKER ! -i docker0 -p tcp -m tcp --dport 5000 -j DNAT --to-destination 172.17.0.4:5000
+...
+*filter
+-A DOCKER -d 172.17.0.4/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 5000 -j ACCEPT
+这两条规则将访问宿主机5000端口的流量转发到172.1.0.4的5000端口上，所以外界访问docker是通过iptables做DNAT来实现的。
+
+1、同一台宿主机上的docker容器默认都连在docker0网桥上，他们属于同一个子网；
+2、docker daemon会在filter的FORWARD链中增加一条ACCEPT的规则（--icc=true：表示允许容器间相互通信）：
+	-A FORWARD -i docker0 -o docker0 -j ACCEPT
+3、在Docker容器和外界通信的过程中，还涉及了数据包在多个网卡间的转发（如从docker0网卡到宿主机eth0的转发），这需要内核将ip-forward功能打开，即将ip_forward系统参数设为1
+
+Docker link
+宿主机上建iptables规则：
+-A DOCKER -s 172.17.0.2/32 -d 172.17.0.1/32 -i docker0 -o docker0 -p tcp -m tcp --dport 5432 -j ACCEPT
+-A DOCKER -s 172.17.0.1/32 -d 172.17.0.2/32 -i docker0 -o docker0 -p tcp -m tcp --dport 5432 -j ACCEPT
+
+*************************************************************************************************************
+Docker网络高级实践
+Docker默认的bridge驱动，容器没有对外IP，只能通过NAT来实现对外通信。这种方式不能解决跨主机容器间通信的问题。
+
+给两张网卡配置了IP后，会在各自的network namespace中生成一条路由，用ip route或route -a命令查看一下：
+$ ip route
+...
+10.0.0.0/24 dev veth-a proto kernel scope link src 10.0.0.1
+...
+这条路由表明的意义是目的地地址为10.0.0.0/24网络的ip包分别从veth-a和veth-b发出。
+
+在目前docker默认的网络环境下，单台主机上的docker容器可以通过docker0网桥直接通信，而不同主机上的docker容器之间只能通过在主机上做端口映射的方法进行通信。这种端口映射的方法极其不便。那么，如何在当前docker网络环境下实现这样的需求呢？下面介绍两种实现方法：
+1、桥接
+在4.2.2节中，演示了如何使用虚拟网桥将docker容器连接到本地网络环境中，它们之间可以直接通信：
+	本地网络：10.10.103.0/24
+	网关：10.10.103.254
+	主机：10.10.103.91/24
+	主机上有docker容器：test1
+	
+	1、启动一个名为test1的docker容器；
+	2、创建一个供容器连接的网桥br0；
+	3、将主机eth0桥接到br0上，并把eth0的ip配置在br0上：10.10.103.91/24；
+	4、在主机上创建veth peer：veth-a、veth-b；
+	5、veth-a连接到br0网桥中；
+	6、veth-b放到docker容器中；
+	7、在veth-b上配置ip：10.10.103.95/24；
+	8、docker容器内设置默认网关：10.10.103.254；
+	现在test1容器可以很方便地实现与本地主机相互访问，并且test1容器可以通过本地网络的网关10.10.103.254访问外部网络；
+但是这么做可能会出现下列问题：
+	1、Docker容器占用注解网络的IP地址；
+	2、大量docker容器可能引起广播风暴，导致主机所在网络性能下降；
+	3、Docker容器连在主机网络中可能引起安全问题；
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
