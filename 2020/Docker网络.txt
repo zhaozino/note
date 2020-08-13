@@ -42,7 +42,9 @@ docker0网桥是docker daemon启动时自动创建的，其ip默认为172.17.0.1
 --fixed-cidr=CIDR：限制Docker容器获取IP的范围。Docker容器默认获取的IP范围未Docker网桥的整个子网范围，这个参数可缩小范围。
 
 在docker安装完成后，将默认在宿主机系统上增加一些iptables规则，以用于Docker容器和容器之间以及和外界的通信，可以使用iptables-save命令查看。其中nat表上的POSTROUTING链有这么一条规则：
--A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE
+-A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE  
+//! -o docker0的翻译词是-o eth0，不是-i docker0
+//这条规则代表的意义：-A POSTROUTING -s 172.17.0.0/16 -o eth0 -j MASQUERADE  
 
 这条规则关系着Docker容器和外界的通信，含义是将地址为172.17.0.0/16的数据包（即Docker容器发出的数据），当不是从docker0网卡发出时做SNAT（源地址转换，将IP包的源地址替换为相应网卡的地址）。这样一来，从Docker容器访问外网的流量，在外部看来就是从宿主机上发出的，外部感觉不到Docker容器的存在。那么，那么外界想要访问Docker容器的服务时该怎么办？启动容器时端口映射：
 docker run -d -p 5000:5000 demo/nginx /bin/bash
@@ -51,9 +53,11 @@ docker run -d -p 5000:5000 demo/nginx /bin/bash
 ...
 *nat
 -A DOCKER ! -i docker0 -p tcp -m tcp --dport 5000 -j DNAT --to-destination 172.17.0.4:5000
+//这条规则代表的意义：-A DOCKER -i eth0 -p tcp -m tcp --dport 5000 -j DNAT --to-destination 172.17.0.4:5000
 ...
 *filter
 -A DOCKER -d 172.17.0.4/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 5000 -j ACCEPT
+//这条规则代表的意义：-A DOCKER -d 172.17.0.4/32 -i eth0 -o docker0 -p tcp -m tcp --dport 5000 -j ACCEPT
 这两条规则将访问宿主机5000端口的流量转发到172.1.0.4的5000端口上，所以外界访问docker是通过iptables做DNAT来实现的。
 
 1、同一台宿主机上的docker容器默认都连在docker0网桥上，他们属于同一个子网；
@@ -77,9 +81,7 @@ $ ip route
 ...
 这条路由表明的意义是目的地地址为10.0.0.0/24网络的ip包分别从veth-a和veth-b发出。
 
-在目前docker默认的网络环境下，单台主机上的docker容器可以通过docker0网桥直接通信，而不同主机上的docker容器之间只能通过在主机上做端口映射的方法进行通信。这种端口映射的方法极其不便。那么，如何在当前docker网络环境下实现这样的需求呢？下面介绍两种实现方法：
-1、桥接
-在4.2.2节中，演示了如何使用虚拟网桥将docker容器连接到本地网络环境中，它们之间可以直接通信：
+1、如果想要使Docker容器和容器主机处于同一个网络，那么容器和主机应该处于一个二层网络中。能想到的场景就是把两台机器连在同一个交换机上，或者连在不同的级联交换机上。在虚拟场景下，虚拟网桥可以将容器连在一个二层网络中，只要将主机的网卡桥接到虚拟网桥中，就能将容器和主机的网络连接起来。构建完拓扑结构后，只需再给Docker容器分配一个本地局域网IP就大功告成了。
 	本地网络：10.10.103.0/24
 	网关：10.10.103.254
 	主机：10.10.103.91/24
@@ -99,17 +101,111 @@ $ ip route
 	2、大量docker容器可能引起广播风暴，导致主机所在网络性能下降；
 	3、Docker容器连在主机网络中可能引起安全问题；
 
+2、使用macvlan设备将容器连接到本地网络
+	除了使用linux bridge将docker容器桥接到本地网络中之外，还有另外一种方式，即使用主机网卡的macvlan子设备。macvlan设备是从网卡上虚拟出的一块新网卡，它和主网卡分别有不同的MAC地址，可以配置独立的IP地址。macvlan早前在LXC中被广泛使用，目前docker网络本身不提供macvlan支持，但可以借助pipework来完成macvlan配置。如果采用macvlan来完成之前的例子，name整个过程只需要执行一条命令：
+	pipework eth0 test1 10.10.103.95/24@10.10.103.254
+	这里，pipework的第一个参数是主机上的一块以太网卡，而非网桥。pipework不会再创建veth pair设备来连接容器和网桥，转而采用macvlan设备作为test1容器的网卡，操作过程如下：
+	1、从主机的eth0上创建一块macvlan设备，将macvlan设备放入到test1中，并命名eth1；
+	2、为test1中新添加的网卡配置IP地址为10.10.103.95/24；
+	3、若test1中已经有默认路由，则删掉，把10.10.103.254设为默认路由网关。
+	从eth0上创建出的macvlan设备放在test1后，test1容器就可以和本地网络中的其他主机通信了。但是，在test1所在主机上，却不能访问test1，因为进出macvlan设备的流量被主网卡eth0隔离了，主机不能通过eth0访问macvlan设备。要解决这个问题，需要在eth0上再创建一个macvlan设备，将eth0的IP地址移到这个macvlan设备上，代码如下
 
+3、open vswitch是一个开源的虚拟交换机，相比于linux bridge，open vswitch支持vlan、qos等功能，同时还提供对openflow协议的支持，可以很好地与sdn体系融合。
 
+在目前docker默认的网络环境下，单台主机上的docker容器可以通过docker0网桥直接通信，而不同主机上的docker容器之间只能通过在主机上做端口映射的方法进行通信。这种端口映射的方法极其不便。那么，如何在当前docker网络环境下实现这样的需求呢？下面介绍两种实现方法：
+1、桥接：将所有主机上的docker容器放在一个二层网络中，它们之间的通信是由交换机直接转发，不通过路由器。
+	在4.2.2节中，演示了如何使用虚拟网桥将docker容器连接到本地网络环境中，它们之间可以直接通信：但这么做可能会出现下列问题：
+	Docker容器占用主机网络的IP地址；
+	大量docker容器可能引起广播风暴，导致主机所在网络性能的下降；
+	Docker容器连在主机网络中可能引起安全问题。
+	因此，如果情况不是无法回避，必须将Docker容器连接在主机网络中，最好还是将其分离开。	为了隔离docker容器间网络和主机网络，需要额外使用一块网卡桥接docker容器。思路还是和采用一块网卡时一样：在所有主机上用虚拟网桥将本机的docker容器连接起来，然后将一块网卡加入到虚拟网桥中，使所有主机上的虚拟网桥级联在一起，这样，不同主机上的docker容器也就如同连在了一个大的逻辑交换机上。
+	
+	关于docker容器的IP，由于不同机器上的docker容器可能获得相同的IP地址，因此需要解决IP的冲突问题，一种方法是使用pipework为每一个容器分配一个不同的ip，而不使用docker daemon分配的ip，但此种方法相当繁琐，因此一般采用另一种方法——为每一台主机上的docker daemon指定不同的--fixed-cidr参数，将不同主机上的docker容器的地址限定在不同的网段中。
+	
+	如图：将eth1桥接到docker0上，并将eth1的IP配置到docker0上，eth1不需要配置IP；
+	
+	特点：桥接的容器都在一个网段；
 
+2、直接路由：在主机中添加静态路由。如果有两台主机host1、host2，两台主机上的docker容器是两个独立的二层网络，将con1发往con2的数据流先转发到主机host2上，再由host2再转发	到其上的docker容器中；反之亦然；由于使用容器IP进行路由，就需要避免不同主机上的docker容器使用相同的IP，所以应该为不同的主机分配不同的IP子网。
+	host1：10.10.103.91/24
+		docker0：172.17.1.254/24
+		container1：172.17.1.1/24
+	host2：10.10.103.92/24
+		docker0：172.17.2.254/24
+		container1：172.17.2.1/24
+	
+	host1添加路由，将目的地为host2容器子网的包转发到host2，host2的配置类似；
+	route add -net 172.17.2.0 netmask 255.255.255.0 gw 10.10.103.92
+	iptables -t nat -F POSTROUTING //表示清空nat表
+	iptables -t nat -A POSTROUTING -s 172.17.1.0/24 ! -d 172.17.0.0/16 -j MASQURADE //如果没有这条SNAT就不能访问外网了
 
+无论是桥接还是直接路由，都要求主机在同一个局域网中，如果两台主机在不同的二层网络中，该如何实现容器间的跨主机通信呢？
 
+VLAN
+	VLAN(Virtual Local Area Network)：虚拟局域网，将一个二层网络中的机器隔离开来，通过在传统的以太网帧中添加一个VLAN tag字段（其实是通过交换机端口打的tag），用于标识不同的VLAN，这样，支持VLAN的交换机在转发帧时，不仅会关注MAC地址，还会考虑到VLAN tag字段。交换机分为access端口（连接host）和trunk端口（级联交换机的），每个access端口都会分配一个VLAN ID，标识它所连接的设备属于哪一个VLAN。当数据帧从外界通过access端口进入交换机时，数据帧原本是不带tag的，access端口给数据帧打上tag；当数据帧从交换机内部通过access端口发送时，数据帧的VLAN ID必须和access端口的VLAN ID一致，access端口才接收此帧，接着access端口将帧的tag信息去掉，再发送出去。trunk端口不属于某个特定的VLAN，而是交换机和交换机之间多个VLAN的通道。trunk端口声明了一组VLAN ID，表明只允许带有这些VLAN ID的数据帧通过，从trunk端口进入和出去的数据帧都是带tag的（不考虑默认VLAN的情况）。
 
+	在多租户的云环境中，VLAN是一个最基本的隔离手段。
 
+	1、单主机Docker容器的VLAN划分
+	docker0网桥是普通的linux网桥，不支持VLAN功能，可以使用open vSwitch代替docker0进行VLAN划分。
+	
+	2、多主机docker容器的vlan划分
+	通过桥接方式实现docker跨主机通信，用open vswitch连接host1和host2的eth1，通过open vswitch设置VLAN；
+	
+OVS隧道模式
+	桥接和直接路由方式，要求host要在同一个子网中，当规模很大时，就会有局限性；VLAN也有诸多限制，首先，VLAN是在二层数据帧上做文章，也要求主机在同一个子网；其次，VLAN ID只有12个比特单位，即可用的数量为4000个左右，而且VLAN配置比较繁琐不够灵活，这些问题就是当前云计算所面临的网络考验，目前比较普遍的解决方法是使用Overlay的虚拟化网络技术。
+	
+	Overlay技术模型
+	Overlay网络其实就是隧道技术，即将一种网络协议包装在另一种协议中传输的技术。如果有两个使用IPv6的站点之间需要通信，而它们之间的网络使用IPv4协议，这时就需要将IPv6的数据包装在IPv4数据包中进行传输。隧道被广泛用于连接因使用不同网络而被隔离的主机和网络，使用隧道技术搭建的网络就是所谓的overlay网络。它能有效地覆盖在基础网络之上，该模型可以很好地解决跨网络docker容器实现二层通信的需求；
+	在普通的网络传输中，源IP地址和目的IP地址是不变的，而二层的帧头在每个路由器节点上都会改变，这是TCP/IP协议所作的规定，那么，如何使两国中间隔离了因特网的主机像连在同一台交换机上一样通信？如果将以太网数据帧封装在IP包中，通过中间的因特网，最后传输到目的网络中再解封装，这样就可以保证二层帧头在传输过程中不改变，这也就是早期Ethernet in IP的二层Overlay技术。至于多租户隔离问题，解决思路是将不同租户的流量放在不同的隧道中进行隔离。用于封装传输数据的协议也会有一个类似VLAN ID的标识，以区分不同的隧道。
+	当前主要的overlay技术有VXLAN(Virtual Extensible LAN)和NVGRE(Network Virtualization using Generic Routing Encapsulation)。VXLAN是将数据帧添加VXLAN首部后，封装在物理网络中的UDP报文中的一种隧道转发模式，它采用24位比特标识二层网络分段，称为VNI(VXLAN Network Identifier)类似于VLAN ID的作用。NVGRE同VXLAN类似，它使用GRE的方式来打通二层与三层之间的通路，采用24位比特的GRE key来作为网络标识(TNI)。
+	
+GRE协议：解决跨主机不同子网下，容器通信的方案
+GRE协议可以用来封装任何其他网络层的协议。比如VPN：一个公司有两个处在不同城市的办公地点需要通信，两个地点的主机都处在NAT转换之下，因此两地的主机并不能直接进行ping和ssh	操作，如何才能使两个办公地点相互通信呢？通过在双方路由器上配置GRE隧道就可实现该目的。
+	如果是相同子网通信，GRE封装的数据帧，如果跨子网通信，GRE是把IP包重新封装了一遍，使得可以通过外网传输局域网包；
 
+	GRE功能如此强大，可以实现真正的容器间跨主机通信，目前比较普遍的方法是结合open vswitch使用。
+	
+	在主机不同子网，容器同子网的情况下，容器通信流程如下：
+	con1向con2发送数据时，会发送ARP请求获取con2的MAC地址。ARP请求会被docker0网桥洪泛到所有端口，包括和ovs0网桥相连的ovs0端口。ARP请求到达ovs0网桥后，继续洪泛，通过gre0隧道端口到达host2上的ovs0中，最后到达con2。host1和host2处在不同的网络中，该ARP请求是如何跨越中间网络到达host2的呢？ARP请求经过gre0时，会首先加上一个GRE协议的头部，然后再加上一个源地址为10.10.103.91（即host1的地址），目的地址10.10.105.235（即host2的地址）的IP协议的头部，再发送给host2。这里GRE协议封装的是二层以太网，而非三层IP数据包（如果con1、con2在不同子网，则封装的是IP数据包）。con1获取到con2的MAC地址后，就可以向它发送数据，发送数据包的流程和发送ARP请求的流程类似，只不过docker0和ovs0会学习到con2的MAC地址该从哪个端口发送出去，从而无需洪泛到所有端口。
 
+k8s
+	Pod：容器共享pid、ipc、net、uts命名空间
 
+service clusterIP：即vip（虚拟IP），该虚拟IP并未做任何实质的操作，只是会在k8s集群内每台node上配置iptables，任何访问该vip都会被路由到相应的pod；
 
-
-
-
+kube-proxy：每台node上部署一个kube-proxy进程
+	userspace模式：kube-proxy会为每个service在node上创建并监听一个端口，client访问clusterIP，会被iptables路由到指定端口，再由kube-proxy路由到指定pod；缺点，从用户态（client）到内核态（iptables），再到用户态kube-proxy，性能比较差；
+	iptables模式：kube-proxy通过apiserver监听service状态，动态创建相应iptables规则，通过iptables直接路由clusterIP到指定pod；缺点，在iptables比较多时，性能会比较差；
+	ipvs模式：类似iptables模式，通过hash算法优化性能；
+	
+k8s集群外访问service服务
+	node port
+	LoadBalancer
+	Ingress：分为Ingress对象、Controller，Ingress对象是一个pod，该pod与node共享网络命名空间，所以Ingress可以监听node port，同时Ingress对象又在k8s集群中，所以可以感知service、pod信息，比如Ingress对象常用的场景，在pod中部署nginx实例，client通过node port访问到Ingress pod-nginx，根据nginx.conf负载均衡到相应的service-pod实例，Ingress Controller则通过apiserver监听service、pod的变化，把相关IP配置写到nginx.conf；
+	
+GRE
+	同一个子网通信，端口是不需要配IP的，因为封装的是数据帧，路由不需要IP，类似交换机；如果容器是跨子网的，则端口需要配IP，因为封装的是IP数据报，路由需要解析IP报，类似路由器；
+	
+flannel
+	dst                                  gw                   dev
+	1、10.1.160.0/24(docker2的ip)    10.1.16.0(flannel2的ip)    flannel1 //所有通往目的地址10.1.16.0/24的封包都通过vtep设备flannel.1设备发出，发往的网关地址为10.1.16.0，即主机B中的flannel.1设备。
+	2、fdb MAC B dev flannel1 dst 192.168.0.101(host2 ip)//MAC地址为MAC B的封包，都将通过vxlan首先发往目的地址192.168.0.101，即主机B
+	3、arp信息：网关地址10.1.16.0的地址为MAC B
+	
+	现在有一个容器网络封包要从A发往容器B，和其他backend中的场景一样，封包首先通过网桥转发到主机A中。此时通过，查找路由表，该封包应当通过设备flannel.1发往网关10.1.16.0。通过进一步查找arp表，我们知道目的地址10.1.16.0的mac地址为MAC B。到现在为止，vxlan负载部分的数据已经封装完成。
+	
+	VXLAN header：vxlan 协议相关的部分，一共 8 个字节
+		VXLAN flags：标志位
+		Reserved：保留位
+		VNID：24 位的 VNI 字段，这也是 vxlan 能支持千万租户的地方
+		Reserved：保留字段
+	UDP 头部，8 个字节
+		UDP 应用通信双方是 vtep 应用，其中目的端口就是接收方 vtep 使用的端口，IANA 分配的端口是 4789
+	IP 头部：20 字节
+		主机之间通信的地址，可能是主机的网卡 IP 地址，也可能是多播 IP 地址
+	MAC 头部：14 字节
+		主机之间通信的 MAC 地址，源 MAC 地址为主机 MAC 地址，目的 MAC 地址为下一跳设备的 MAC 地址
+		
+		
+		
