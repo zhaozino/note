@@ -240,8 +240,6 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
 	ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
 	默认的ExtensionFactory实现中，AdaptiveExtensionFactotry被@Adaptive注解注释，也就是它就是ExtensionFactory对应的自适应扩展实现(每个扩展点最多只能有一个自适应实现，
 		如果所有实现中没有被@Adaptive注释的，那么dubbo会动态生成一个自适应实现类)，
-		
-	
 	
 Wapper AOP
 com.alibaba.dubbo.rpc.protocol.ProtocolFilterWrapper
@@ -265,5 +263,17 @@ public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
 }
 	
 	
-	
+JDK标准的SPI会一次性实例化扩展点所有实现，如果有扩展实现初始化很耗时，但如果没用上也加载，会很浪费资源。
+增加了对扩展点IoC和AOP的支持，一个扩展点可以直接setter注入其它扩展点。
+
+扩展点 Dubbo作用灵活的框架，并不会强制所有用户都一定使用Dubbo提供的某些架构。例如注册中心（Registry），Dubbo提供了zk和redis，但是如果我们更倾向于其他的注册中心的话，我们可以替换掉Dubbo提供的注册中心。针对这种可被替换的技术实现点我们称之为扩展点，类似的扩展点有很多，例如Protocol，Filter，Loadbalance等等。
+
+Wrapper Dubbo在加载某个接口的扩展类时候，如果某个实现中有一个拷贝类构造函数，那么该接口实现就是该接口的包装类，此时Dubbo会在真正的实现类上层包装上盖Wrapper。即这个时候从ExtensionLoader中返回的实际扩展类是被Wrapper包装的接口实现类。
+
+Adaptive 这个自适应的扩展点比较难理解，所以这里直接以一个例子来讲解：在RegistryProtocol中有一个属性为Cluster，其中Protocol和Cluster都是Dubbo提供的扩展点，所以这时候当我们真正在操作中使用cluster的时候究竟使用的哪一个cluster的实现类呢？是FailbackCluster还是FailoverCluster？Dubbo在加载一个扩展点的时候如果发现其成员变量也是一个扩展点并且有相关的set方法，就会在这时候将该扩展点设置为一个自适应的扩展点，自适应扩展点（Adaptive）会在真正使用的时候从URL中获取相关参数，来调用真正的扩展点实现类。具体的实现会在下面的源码中详细解释。对于Adaptive的理解其实个人推荐的是Dubbo开发者指南，指南中有对于Adaptive的明确介绍。
+
+Activate 官网的叫法是自激活，其实这个更合适的叫法我认为是条件激活，我们还记得上一篇中有提到Filter的内容，其中Filter链的获取就是通过@Activate注解来确定的，所以Activate的作用主要是：提供一种选择性激活的条件，可以是我们通过相关的配置来确定激活哪些功能。
+
+
+
 	
