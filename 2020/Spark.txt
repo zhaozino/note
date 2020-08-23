@@ -1,0 +1,230 @@
+Spark：Core、SQL、Streaming、GraphX、MLlib
+
+Spark VS Hadoop
+	1、Hadoop中间结果写入hdfs，多次I/O，性能比较差；而Spark写入内存；
+
+hello world
+	val src = new SparkContext("spark://...", "hello world", "YOUR_SPARK_HOME", "YOUR_APP_JAR")
+	val file = sc.textFile("hdfs:///root/Log")
+	val filterRDD = file.filter(_.contains(Hello World)))
+	filterRDD.cache()
+	filterRDD.count()
+	
+	第一行：集群地址、程序标识、spark安装路径、程序jar包路径
+	
+RDD：弹性分布式数据集，一个RDD代表一个被分区的只读数据集；hello world中file、fileRDD都是RDD；
+creation：创建操作，RDD的创建都是由SparkContext来负责的，将内存中的集合或者外部文件系统做为输入源。
+transformation：转换操作，将一个RDD通过一定的操作变换为另一个RDD，比如file这个RDD通过一个filter操作变换成filterRDD，所以filter是一个转换操作。
+control：控制操作，对RDD进行持久化，可以让RDD保存在磁盘或者内存中，以便后续重复使用。比如cache接口默认将filterRDD缓存在内存中。
+action：行动操作，由于Spark是惰性计算的，所以对于任何RDD进行行动操作，都会触发Spark作业的运行，从而产生最终的结果，例如，我们对filterRDD进行的count操作
+	就是一哥行动操作。Spark中的行动操作基本分为两类，一类的操作结果变成Scala集合或者标量，另一类就将RDD保存到外部文件或者数据库系统中。
+	
+抽象RDD包含以下几个接口
+	partition：分区，一个RDD会有一个或多个分区；
+	preferredLocations(p)：对于分区p而言，返回数据本地化计算的节点；
+	dependencies()：RDD的依赖关系；
+	compute(p, context)：对于分区p而言，进行迭代计算；
+	partitioner()：RDD的分区函数；
+	
+RDD分区
+	val rdd = sc.parallelize(1 to 100, 2) //即2个分区
+	
+RDD优先位置
+	移动数据不如移动计算，在Spark进行任务调度的时候，尽可能地将任务分配到数据块所存储的位置。
+	
+RDD依赖关系
+	窄依赖：每一个父RDD的分区最多只被子RDD的一个分区所使用，1对1，多对1，不需要Shuffle；
+	宽依赖：多个子RDD的分区会依赖于同一个父RDD的分区，1对多，一般会产生Shuffle；
+	
+对于一个Spark数据处理程序而言，一般情况下RDD与操作之间的关系：经过输入操作（创建操作）、转换操作、控制操作、输出操作（行动操作）来完成一个作业。
+
+PageRank算法
+	val sc = new SparkContext(...)
+	    // 生成网页边的关系
+    val links = sc.parallelize(Array(('A',Array('D')),('B',Array('A')),
+       ('C',Array('A','B')),('D',Array('A','C'))),2).map(x => (x._1, x._2)).cache()
+
+    // 初始化rank值，2表示分两个partition
+    var ranks = sc.parallelize(Array(('A',1.0),('B',1.0),('C',1.0),('D',1.0)), 2)
+
+    // 迭代10次
+    for ( i <- 1 to 10){
+       val contribs = links.join(ranks, 2)
+       val flatMapRDD = contribs.flatMap {
+           case (url,(links,rank)) => links.map(dest => (dest, rank/links.size))
+        }
+       val reduceByKeyRDD = flatMapRDD.reduceByKey(_ + _, 2)
+       ranks = reduceByKeyRDD.mapValues(0.15 + 0.85 * _)
+
+    }
+
+对于Spark中每个RDD的计算都是以partition（分区）为单位的，而且RDD中的compute函数都是在对迭代器进行复合，不需要保存每次计算的结果。
+
+partitioner就是RDD分区函数，目前在spark中实现了两种类型的分区函数，即HashPatitioner（哈希分区）和RangePatitioner（区域分区），且partitioner这个属性只存在于(K,V)类型的
+	RDD中，对于非(K,V)类型的partitioner的值就是None。
+
+1、创建操作
+	1.1、集合创建操作：RDD的形成可以由内部集合类型来生成，Spark提供了parallelize和makeRDD两类函数来实现从集合生成RDD，makeRDD可以指定分区数；
+		val rdd = sc.parallelize(1 to 10)
+		val rdd = c.makeRDD(1 TO 10, 3)
+	1.2、存储操作：主要兼容Hadoop，即hadoopRDD、newHadoopRDD，兼容新旧两个hadoop版本；
+		textFile、hadoopFile、sequenceFile、objectFile、hadoopRDD、newAPIHadoopRDD
+		主要包括4个参数
+			输入格式（InputFormat）：指定数据输入类型；
+			键类型：指定K,V键值对中K的类型；
+			值类型：V的类型；
+			分区值：指定由外部存储生成的RDD的partition数量的最小值，如果没有指定，系统会使用默认defaultMinSplits；
+	
+2、转换操作
+	2.1、RDD的基本转换功能
+		map[U:ClassTag](f:T=>U): RDD[U]
+		distinct():RDD[T]
+		flatMap[U:ClassTag](f:T=>TraversableOnce[U]):RDD[U]
+		
+		假设RDD有N个分区，需要重新划分为M个分区；
+		repartition(numPartitions:Int):RDD[T]
+		coalesce(numPartitions:Int, shuffle:Boolean=false):RDD[T]
+			都是对RDD进行重新分区，repartition相当于shuffle=true；
+			
+			如果N<M，一般情况下N个分区有数据分布不均的状况，利用HashPartitioner函数将数据重新分区为M个，这时需要将shuffle参数设置为true；在shuffle为false的情况下，
+				分区不会变的。
+			如果N>M，且N和M相差不多（比如N是1000，M是100），这时可以将shuffle设为false，不进行shuffle过程，是窄依赖关系；
+			如果N>M，且N和M相差悬殊1000 VS 1，为了有更好的并行度，建议shuffle参数设为true；
+			
+		randomSplit(weights:Array[Double], seed:Long=System.nanoTime):Array[RDD[T]]
+		glom():RDD[Array[T]]
+			两个函数的功能似乎颠倒了一下，randomSplit函数是根据weights权重将一个RDD切分成多个RDD，而glom函数是将RDD中每一个分区中类型为T的元素转换成数组Array[T]，
+				这样每一个分区就只有一个数组元素。
+			val rdd = sc.makeRDD(1 to 10, 3)
+			val glomRDD = rdd.glom()
+			glomRDD.collect() //Array[Array[Int]] = Array(Array(1,2,3), Array(4,5,6),Array(7,8,9,10))
+			
+			val rdd = sc.makeRDD(1 to 10, 10)
+			val splitRDD = rdd.randomSplit(Array(1.0, 3.0, 6.0))
+			splitRDD(0).collect() //Array[Int] = Array(9)
+			splitRDD(1).collect() //Array[Int] = Array(1,10)
+			splitRDD(2).collect() //Array[Int] = Array(2,3,4,5,6,7,8)
+			
+		union(other:RDD[T]):RDD[T] //返回两个集合的并集
+		intersection(other:RDD[T]):RDD[T] //返回交集，并去重
+		intersection(other:RDD[T], partitioner:Partitioner)
+		subtract(other:RDD[T]):RDD[T] //A集合中出现，但不在B集合中
+		subtract(other:RDD[T], p:Partitioner):RDD[T]
+		
+		mapPartitions[U:ClassTag](f:Iterator[T]=>Iterator[U],preservesPartitioning:Boolean=false):RDD[U]
+		mapPartitionsWithIndex[U:ClassTag](f:Iterator[T]=>Iterator[U],preservesPartitioning:Boolean=false):RDD[U]
+			和map转换操作类似，只不过映射函数的输入参数由RDD中的每一个元素变成了RDD中每一个分区的迭代器。已经有了map为什么还要mapPartitions呢？如果在映射的过程中需要
+				频繁创建额外的对象，map就显得不高效了，RDD中的各个分区可以共享同一个对象以便提高性能。例如，将RDD中的所有数据通过JDBC连接写入DB中，如果使用map可能需要
+				为每一个元素都创建一个connection，这样开销是很大的，如果利用mapPartitions接口，可以针对每一个分区创建一个connection。
+			参数preservesPartitioning指明mapPartitionsRDD是否保留父RDD的partitioner分区信息。mapPartitionsWithIndex和mapPartitions功能类似，只是输入参数多了一个分区的ID。
+			val rdd = sc.makeRDD(1 to 5, 2)
+			val mapRDD = rdd.map(x => (x,x))
+			val groupRDD = mapRDD.groupByKey(3)
+			val mapPartitionsRDD = groupRDD.mapPartitions(iter => iter.filter(_._1 > 3))
+			mapPartitionsRDD.collect() // Array[(Int,Iterable[Int])] = Array((4,ArrayBuffer(4)), (5,ArrayBuffer(5)))
+			
+		zip[U:ClassTag](other:RDD[U]):RDD[(T,U)]
+		zipPartitions[B:ClassTag, V:ClassTag](rdd2:RDD[B],preservesPartitioning:Boolean)(f:(Iterator[T],Iterator[B])=>Iterator[V]):RDD[V]
+		zipPartitions[B:ClassTag,V:ClassTag](rdd2:RDD[B])(f:(Iterator[T],Iterator[B])=>Iterator[V]):RDD[V]
+		zipPartitions[B:ClassTag,C:ClassTag,V:ClassTag](rdd2:RDD[B],rdd3:RDD[C],preservesPartitioning:Boolean)(f:(Iterator[T],Iterator[B],Iterator[C])=>Iterator[V]):rdd[v]
+		zipPartitions[B:ClassTag,C:ClassTag,v:ClassTag](rdd2:RDD[B], rdd3:RDD[C])(f:(Iterator[T],Iterator[B],Iterator[C])=>Iterator[V]):RDD[V]
+		zipPartitions[B:ClassTag,C:ClassTag,D:ClassTag,v:ClassTag](rdd2:RDD[B], rdd3:RDD[C], rdd4:RDD[C], preservesPartitioning:Boolean)(f:(Iterator[T],Iterator[B],Iterator[C],Iterator[D])=>Iterator[V]):RDD[V]
+		zipPartitions[B:ClassTag,C:ClassTag,D:ClassTag,v:ClassTag](rdd2:RDD[B], rdd3:RDD[C], rdd4:RDD[C])(f:(Iterator[T],Iterator[B],Iterator[C],Iterator[D])=>Iterator[V]):RDD[V]
+			zip的功能是将两个RDD组合成Key/Value（键/值）形式的RDD，这里默认两个RDD的partition数量及元素数量都相同，否则相同系统将会抛出异常。而zipPartitions是将多个RDD
+			按照partition组合成新的RDD，zipPartitions需要相互组合的RDD具有相同的分区数，但是对于每个分区中的元素数量是没要求的。
+			val rdd = sc.makeRDD(1 to 5, 2)
+			val mapRDD = rdd.map(x =>(x+1.0))
+			val zipRDD = rdd.zip(mapRDD)
+			zipRDD.collect() //Array[(Int, Double)] = Array((1,2.0),(2,3.0),(3,4.0),(4,5.0),(5,6.0))
+		zipWithIndex():RDD[(T,Long)]
+		zipWithUniqueId():RDD[(T,Long)]
+			zipWithIndex是将RDD中的元素和这个元素的ID组合成键/值对，比如第一个分区的第一个元素是0；
+	2.2、键值RDD转换操作
+		partitionBy(partitioner:Partitioner):RDD[(K,V)] //根据partitioner函数重新分区
+		mapValues[U](f:V=>U):RDD[(K,U)] //对值操作
+		flatMapValues[U](f:V=>TraversableOnce[u]):RDD[(K,U)] //对值操作
+			val rdd = sc.parallelize(Array(1,1),(1,2),(2,1),(3,1),1)
+			val partitionByRDD = rdd.partitionBy(new HashPartitioner(2))
+			partitionByRDD.collectPartitions() //Array[Array[(Int,Int)]] = Array(Array((2,1)),Array((1,1),(1,2),(3,1)))
+			
+			val rdd = sc.parallelize(Array(1,1),(1,2),(2,1),(3,1),1)
+			rdd.mapValues(x=>x+1) //(1,2), (1,3)...
+			
+		combineByKey[C](createCombiner:V=>C,mergeValue:(C,V)=>C,mergeCombiners:(C,C)=>C,partitioner:Partitioner, mapSideCombine:Boolean=true,serializer:Serializer=null):RDD[(K,C)]
+		...
+		foldByKey(zeroValue:V)(func:(V,V)=>V):RDD[(K,V)] //初始化一个“zero value”，然后对每个Key的值做聚合操作
+		...
+		reduceByKey(func:(V,V)=>V):RDD[(K,V)] //相同key的聚合计算
+		...
+		groupByKey():RDD[(K,Iterator[V])] //(K,Iterator[V])
+		...
+			combineByKey, foldByKey, reduceByKey, groupByKey最终都会归结为对combineByKey的调用。combineByKey接口是将RDD[K,V]转化成返回类型RDD[K,C]，这里V类型和C类型可以
+				相同，也可以不同，combineByKey抽象接口一般需要传入5个典型参数：
+				createCombiner：创建组合器函数，将V类型值转化成C类型值。
+				mergeValue：合并值函数，将一个V类型值和一个C类型值合并成一个C类型值。
+				mergeCombiners：合并组合器函数，将两个C类型值合并成一个C类型值。
+				partitioner：指定分区函数。
+				mapSideCombine：布尔类型值，指定是否需要在Map端进行combine操作，类似于MapRecuce中进行的combine操作。
+		
+		cogroup[W](other:RDD[(K,W)]):RDD[(K,(Iterable[V],Iterable[W]))] //对两个RDD中的KV元素，每个RDD中相同key中的元素分别聚合成一个集合
+		...
+		join[W](other:RDD[(K,W)]):RDD[(K,(V,W))] //内连接，(K, (V1,V2,...))
+		...
+		leftOuterJoin[W](other:RDD[(K,W)]):RDD[(K,(V,Option[W]))] //左外连接
+		...
+		rightOuterJoin[W](other:RDD[(K,W)]):RDD[(K,(V,Option[W]))] //右外连接
+		...
+		subtractByKey[W:ClassTag](other:RDD[(K,W)]):RDD[(K,V)] //左边有的，右边没有的
+		...
+		
+3、控制操作
+	cache():RDD[T]
+	persist():RDD[T]
+	persist(level:StorageLevel):RDD[T]
+	
+	checkpoint：将RDD持久化在HDFS中，其与persist的一个区别是checkpoint将会切断此RDD之前的依赖关系，而persist接口依然保留着RDD的依赖关系。
+	sc.setCheckpointDir("temp")
+		如果一个Spark程序会长时间驻留运行，过长的依赖将会占用很多系统资源，那么定期将RDD进行checkpoint操作，能够有效地节省系统资源。
+		维护过长的依赖关系还会出现一个问题，如果Spark在运行过程中出现节点失败的情况，那么RDD进行容错重算的成本会非常高。
+
+	aggregate[U](zeroValue)
+		val pairs = sc.makeRDD(1 to 5)
+		rdd1.aggregate(3)(pfun1, pfun2) //pfun1=a*b, pfun2=a+b，结果是363
+	
+	fold(zeroValue:T)(op:(T,T)=>T)
+		val rdd = List(1,2,3,4)
+		rdd.fold(0)((x, y) => x + y) //fole相当于reduce加了一个初始值，结果是8，与reduce类似，只是多了一个初始值
+		
+	lookup(key:K):Seq[V]
+		val rdd = sc.makeRDD(Array(("a",1), ("b",2), ("a", 3)))
+		rdd.lookup("a") //Seq[Int] = WrappedArray(1,3)
+	
+
+4、行动操作
+	行动操作是和转换操作相对应的一种对RDD的操作类型，每调用一次行动操作，都会触发一次Spark的调度并返回相应的结果。返回给客户端，或存储起来。
+	4.1、集合标量行动操作
+		first：返回RDD中的第一个元素；
+		count：返回RDD中元素的个数；
+		reducje(f:(T,T)=>T):对RDD中的元素进行二次计算，返回计算结果。
+			val rdd = sc.makeRDD(1 TO 10, 1)
+			rdd.reduce(_ + _)
+			rdd.collect() //都加1
+		collect()/toArray()：以集合形式返回RDD的元素
+		take(num:Int)：将RDD作为集合，返回集合中[0,num-1]下标元素。
+		top(num:Int)：按照默认的或者是指定的排序规则，返回num个元素。
+		takeOrdered(num:Int)：以与top相反的排序规则，返回num个元素。
+	4.2、存储行动
+		saveAsTextFile(path:String)
+		saveAsTextFile(path:String, codec:Class[_<:CompressionCodec])
+		saveAsObjectFile(path:String)
+		saveAsHadoopFile(...)
+		saveAsHadoopDataset(conf:jobConf)
+		saveAsNewAPIHadoopFile(...)
+		...
+	
+
+
+
+
+
+
