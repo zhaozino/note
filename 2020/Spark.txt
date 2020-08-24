@@ -272,9 +272,23 @@ Spark任务调度
       s
     })
 	
+Spark Streaming流数据处理
 
+Demo
+	val ssc = new StreamingContext(args(0), "NetworkWordCount", Seconds(1))
+	val lines = ssc.socketTextStream(args(1), args(2).toInt)
+	val words = lines.flatMap(_.split(" "))
+	val wordCounts = words.map(x=>(x,1)).reduceByKey(_+_)
+	wordCounts.print()
+	ssc.start()
+	ssc.waitTermination()
+	ssc.stop()
 
+批处理间隔：Spark Streaming以多数时间间隔为单位来提交任务逻辑。
+滑动间隔：一般设为与批处理间隔相同；
+窗口间隔：一个窗口的间隔时间；
 
+DStream内部维护了一组离散的以时间轴为键的RDD序列，这些RDD序列分别代表着不同时间段内的数据集，而我们对于DStream的各种操作最终都会映射到内部的RDD上。
 
 
 
