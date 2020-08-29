@@ -323,3 +323,10 @@ Dubbo SPI Activate
 		那么才会被选中。相当于加入了value后，条件更为苛刻点，需要URL中有此参数并且，参数必须有值。
 	3.@Activate的order参数对于同一个类型的多个扩展来说，order值越小，优先级越高。
 	
+URL url = URL.valueOf("test://localhost/test");
+url = url.addParameter("value", "test");
+ExtensionLoader.getExtensionLoader(ActivateExt.class)..getActivateExtension(url, new String[]{"order1", "default"}//names, "group");
+
+1、不管group是否适配，直接取activate key == names的实例；
+2、names中不包含activate key，必须适配group
+	且activate value为空，或者activate value == url key，或者url key.endsWith(.activate value)
