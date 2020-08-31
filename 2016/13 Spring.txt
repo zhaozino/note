@@ -334,12 +334,12 @@ JDBC事务管理
 		ISOLATION_SERIALIZABLE：完全的隔离层级，可防止脏读、不可重复读、幻读等问题，会锁定对应的数据表格，因而有效率问题；
 	
 	传播行为：
-		PROPAGATION_MANDATORY：方法必需在一个现存的事务中进行，否则丢出异常；
-		PROPAGATION_NESTED：在一个嵌入的事务中进行，如果不是，丢出异常；
-		PROPAGATION_NEVER：不应在事务中进行，如果有就丢出异常；
+		PROPAGATION_MANDATORY：支持现在的事务，否则丢出异常；
 		PROPAGATION_SUPPORTS：支持现在的事务，如果没有就以非事务的方式执行；
-		PROPAGATION_NOT_SUPPORTED：不应在事务中进行，如果有就暂停现存的事务；
 		PROPAGATION_REQUIRED：支持现在的事务，如果没有就建立一个新的事务；
+		PROPAGATION_NEVER：不应在事务中进行，如果有就丢出异常；
+		PROPAGATION_NOT_SUPPORTED：不应在事务中进行，如果有就暂停现存的事务；
+		PROPAGATION_NESTED：在一个嵌入的事务中进行，如果不是，丢出异常；
 		PROPAGATION_REQUIRES_NEW：建立一个新的事务，如果现存一个事务就暂停它；
 
 	Spring对事务管理的抽象关键在于PlatformTransactionManager
