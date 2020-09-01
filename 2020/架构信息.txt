@@ -1,0 +1,16 @@
+
+API Gateway(DMZ)、API Gateway(DCN)、Proxy
+
+DubboX（把枪分拣）、DubboX（自动分拣机）、Admin（Vue/ElementUI）
+
+KafkaConsumer、xxl-job、Monitor（sdk->kafka->consumer->Druid->grafana）
+
+ConfigCenter、APM、ELK、kafka
+
+mysql、redis、hbase、es、tsdb
+
+
+cas、osd、cdn/dsa
+
+灰度、自动化部署、自动化测试、全链路压测
+

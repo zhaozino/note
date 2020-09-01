@@ -33,7 +33,7 @@ AI + 工程（广度/深度） + 商业；
 解决方案提供商，某一领域内的专家；
 
 前沿：Docker、K8S、IStio
-广度：Hadoop/Yarn、Spark、Hive、Druid、Scala、go、C++
+广度：Hadoop/Yarn、Spark/Flink、go/Scala、Hive、Druid
 深度：SpringBoot、Dubbo、Netty、MyCat、JVM、java多线程、MySql、Redis、MongoDB、HBase、ES、Kafka、Zookeeper、分布式事务、设计模式、数据结构、计算机网络、HTTP、Linux、Nginx/OpenRegistry
 
 ***************************************************************************************************************
