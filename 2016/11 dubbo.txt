@@ -245,8 +245,8 @@ ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
 		如果所有实现中没有被@Adaptive注释的，那么dubbo会动态生成一个自适应实现类)，
 	
 Wapper AOP
-com.alibaba.dubbo.rpc.protocol.ProtocolFilterWrapper
-com.alibaba.dubbo.rpc.protocol.ProtocolListenerWrapper，
+com.alibaba.dubbo.rpc.protocol.ProtocolFilterWrapper：buildInvokerChain
+com.alibaba.dubbo.rpc.protocol.ProtocolListenerWrapper：ListenerExporterWrapper、ListenerInvokerWrapper
 这两个类不含有@Adaptive注解且具有含有Protocol的单参构造器，符合这样条件的会被列入AOP增强类。放置在loader的私有属性cachedWrapperClasses中。
 
 for (Class<?> wrapperClass : wrapperClasses) {
