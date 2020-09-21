@@ -1,0 +1,58 @@
+case: ${traceId}
+  http: GET /test/helloworld 2.0
+    spanId:
+    request: 
+      header: {"sec-fetch-mode":"navigate","sec-fetch-site":"none","accept-language":"zh-CN,zh;q=0.9,en;q=0.8","host":"localhost:8083","upgrade-insecure-requests":"1","connection":"keep-alive","accept-encoding":"gzip, deflate, br","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36","accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"}
+      param: {}
+      comparator:
+      
+    http: GET /test/case 2.0
+      spanId:
+      request: 
+        header: {"abc":"kids","lala":"baba"}
+        param: {"abc":["123"],"def":["789"]}
+        comparator:
+        
+      mysql:
+        spanId:
+        request:
+          sql:
+          comparator:
+        response:
+          result:
+        
+      response: status 
+        header: {"Keep-Alive":"timeout=60","Transfer-Encoding":"chunked","Connection":"keep-alive","Date":"Mon, 14 Sep 2020 13:46:48 GMT","Content-Type":"application/json"}
+        body: {"case":"case"}
+        
+    http: GET /test/case2 2.0
+      spanId:
+      request: 
+        header: {"abc":"kids","lala":"baba"}
+        param: {"abc":["123"],"def":["789"]}
+        comparator:
+      response: status
+        header: {"Keep-Alive":"timeout=60","Connection":"keep-alive","Content-Length":"5","Date":"Mon, 14 Sep 2020 13:46:48 GMT","Content-Type":"text/plain;charset=UTF-8"}
+        body: case2
+        
+	response: status
+      header: {"Keep-Alive":"timeout=60","Connection":"keep-alive","Content-Length":"5","Date":"Mon, 14 Sep 2020 13:46:48 GMT","Content-Type":"text/plain;charset=UTF-8"}
+      body: helloworld
+      comparator:
+      
+traceId、spanId、parentSpanId、rr/rs、infoId
+
+
+
+infoId、protocol(http/mybatis/jedis/kafka)
+	http：起始行、首部、主体；
+        <method> <request-URL> <version>
+        <headers>
+        <entity-body>
+        
+        <version><status><reason-phrase>
+        <headers>
+        <entity-body>
+	mybatis：sql、param、result
+
+
