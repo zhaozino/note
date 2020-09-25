@@ -15,11 +15,10 @@ case: ${traceId}
         
       mysql:
         spanId:
-        request:
-          sql:
-          comparator:
-        response:
-          result:
+        sql:
+        param:
+        comparator:
+        result:
         
       response: status 
         header: {"Keep-Alive":"timeout=60","Transfer-Encoding":"chunked","Connection":"keep-alive","Date":"Mon, 14 Sep 2020 13:46:48 GMT","Content-Type":"application/json"}
