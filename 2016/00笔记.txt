@@ -1,73 +1,40 @@
 ﻿
-***********************************************************************************************************
-
-html/css、jquery/EXT、UML2
-
-云计算：hadoop/hbase/HDFS/zookeeper/Storm/spark/scala、lucene/elasticsearch
-
-SOA：dubbo/Netty、RabbitMQ/kafka、webService/rest、Spring-WS、Activi/mule/Esper/droos
-
-java设计模式、java多线程编程、数据结构、深入JVM
-
-spring、ibatis、spring源码分析、ibatis源码分析
-
-DB：oracle/mysql/mongodb/redis：sql、让oracle跑的更快、mysql权威指南、Redis设计与实现、MongoDB权威指南、优化、主备、集群；
-
-java编程思想/孙卫琴/java面试宝典
-
-计算机网络、TCP/IP协议栈、HTTP权威指南、鸟哥的linux私房菜
-
-敏捷、scrum、测试驱动开发
-
-mycat
 
 ************************************************************************************************************
 
-1、07.05/06/07
-dubbo、Netty、spring、ibatis、myCat;
+dubbo、Netty、spring、myCat
 
-2、07.08/09
-设计模式、数据结构、深入JVM、java多线程编程;
+设计模式、数据结构、计算机网络、深入JVM、java多线程编程
 
-3、07.10/11
-mongodb、redis、rabbitMQ/kafka、oracle、mysql
+mongodb、redis、rocketMQ/kafka、mysql/oracle
 
-4、07.12
-elasticSearch/lucene、rest
+elasticSearch/lucene、rest、分布式事务
 
-5、07.13
-zookeeper、hadoop/yarn、spark/scala、storm
+zookeeper、hadoop/yarn、spark/scala/flink、hbase
 
-6、07.12
-计算机网络、HTTP权威指南、鸟哥的linux私房菜、分布式操作系统
+posxy、raft、bitmap
 
-7、07.13
-html5/css3、jquery/EXT
+druid、threadlocal、javaClassLoader
 
-8、07.14
-java面试宝典
+docker、k8s、istio
 
-9、07.15
-scrum、UML2
+vue
+
+java面试宝典、算法
 
 ************************************************************************************************************
 
-hadoop日志系统/EXT6
+源码研习
+	dubbo
+	skywalking
 
-spark kafka
-
-************************************************************************************************************
-
-问答平台 02 - 04
-
-速速接口 04 - 08
-
-速速测试 04 - 08
-
-速速后台
-
-
-
+解决方案
+	测试
+	灰度
+	两地三中心
+	日志系统：flume -> kafka -> hdfs/es-consumer -> es -> alarm/ui
+	调用链APM：skywalking
+	统一指标系统：openTSDB、druid
 
 
 
