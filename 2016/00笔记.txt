@@ -35,7 +35,9 @@ java面试宝典、算法
 	日志系统：flume -> kafka -> hdfs/es-consumer -> es -> alarm/ui
 	调用链APM：skywalking
 	统一指标系统：openTSDB、druid
-
+	配置中心：zookeeper
+	DDS终端收派系统
+	OSS开源协同
 
 
 
