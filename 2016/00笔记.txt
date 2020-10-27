@@ -1,12 +1,36 @@
 ﻿
 
+22:30 ~ 23:20：锻炼
+00:00 ~ 07:00：睡眠
+09:00 ~ 12:00：创新型工作
+12:00 ~ 14:00：学习
+14:00 ~ 18:00：工作
+18:00 ~ 19:00：锻炼
+19:00 ~ 22:30：工作
+
+*****************************************************
+一个月一本书/英文书/古文/财经等；
+周六加班；
+周日带小孩外出：图书馆、羽毛球馆、乒乓球馆、海边、爬山等 —— 有限的时间，最有价值的事情；
+
+scala、spark、flink
+
+java -> gitLab -> jenkins -> helm -> k8s
+
+docker/k8s -> serviceMesh -> Istio
+
+*****************************************************
+
+dubbo源码
+skywalking源码
+
 ************************************************************************************************************
 
-dubbo、Netty、spring、myCat
+dubbo、Netty、spring、myCat、skywalking
 
 设计模式、数据结构、计算机网络、深入JVM、java多线程编程
 
-mongodb、redis、rocketMQ/kafka、mysql/oracle
+redis、rocketMQ/kafka、mysql/oracle/mongodb
 
 elasticSearch/lucene、rest、分布式事务
 
@@ -24,9 +48,30 @@ java面试宝典、算法
 
 ************************************************************************************************************
 
+10.12 ~ 10.18
+	设计模式、数据结构、计算机网络、深入JVM、java多线程编程
+
+10.19 ~ 10.25
+	redis、rocketMQ/kafka、mysql/oracle/mongodb
+
+10.26 ~ 10.31
+	zookeeper、hadoop/yarn、spark/scala/flink、hbase
+
+11.1 ~ 11.7
+	dubbo、Netty、spring、myCat、skywalking
+
+11.8 ~ 11.15
+	其他
+
+************************************************************************************************************
+
 源码研习
 	dubbo
 	skywalking
+
+大数据
+	spark、flink、scala
+	docker、k8s、istio
 
 解决方案
 	测试
@@ -34,12 +79,19 @@ java面试宝典、算法
 	两地三中心
 	日志系统：flume -> kafka -> hdfs/es-consumer -> es -> alarm/ui
 	调用链APM：skywalking
-	统一指标系统：openTSDB、druid
+	统一指标系统：disruptor、kafka、druid、grafana、alarm
 	配置中心：zookeeper
-	DDS终端收派系统
-	OSS开源协同
+	DDS终端收派系统：
+	OSS开源协同：
+	全链路压测：
 
-
+************************************************************************************************************
+项目经验
+	api-gateway、api-gateway2、proxy
+	dubbo...dubbox、vue-antd、xxl-job、disconf、kafka-consumer
+	APM、Monitor、ELK、CAS、MyCat、OSD、CDN、DSA
+	灰度、自动化部署、自动化测试、全链路压测、Scrum、Devops
+	mysql、hbase、redis、es、Druid
 
 
 
