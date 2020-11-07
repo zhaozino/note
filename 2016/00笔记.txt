@@ -35,45 +35,29 @@ vue
 
 java面试宝典、算法
 
-************************************************************************************************************
-
-10.12 ~ 10.18
-	设计模式、数据结构、计算机网络、深入JVM、java多线程编程
-
-10.19 ~ 10.25
-	redis、rocketMQ/kafka、mysql/oracle/mongodb
-
-10.26 ~ 10.31
-	zookeeper、hadoop/yarn、spark/scala/flink、hbase
-
-11.1 ~ 11.7
-	dubbo、Netty、spring、myCat、skywalking
-
-11.8 ~ 11.15
-	其他
-
-************************************************************************************************************
+********************************************************************
 
 源码研习
 	dubbo
 
-大数据
-	spark、flink、scala
-	docker、k8s、istio
+大数据：11月
+	scala、spark、flink
 	
-	java -> gitLab -> jenkins -> helm -> k8s
+	go、docker、k8s、istio
 	
-	docker/k8s -> Istio/serviceMesh
+	java -> gitLab -> jenkins -> helm -> k8s -> istio
 
-T10：
+********************************************************************
+	
+T10
+	自动化测试：skywalking + Katalon Recorder；
+	
 	生产全链路压测
 		webApp：nginx proxy、headerKey；
 		db：影子表、动态表名映射；
 		redis：影子表、动态表名映射；
 		kafka：headerKey、生产者/消费者不同的处理逻辑，或者不同的topic；
 		测试脚本：程序生成
-		
-	自动化测试：skywalking + Katalon Recorder；
 
 解决方案
 	测试
