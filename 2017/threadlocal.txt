@@ -109,4 +109,4 @@ ThreadLocal原理：
 	
 	事实上，在ThreadLocalMap中的set/getEntry方法中，会对key为null（也即是ThreadLocal为null）进行判断，如果为null的话，那么是会对value置为null的。
 	
-	
+	https://blog.csdn.net/qq_42862882/article/details/89820017
