@@ -906,10 +906,41 @@ num := 0
 	lisa.changeEmail("lisa@newdomain.com")
 	lisa.notify()
 	
+	函数的接收者不论是指针还是值，都可以用指针、值来调用，go会做自动转换，但只有指针可以改变属性值；
+	
 	Go 语言里的引用类型有如下几个：切片、映射、通道、接口和函数类型。
 	
 接口
 	如果使用指针接收者来实现一个接口，那么只有指向那个类型的指针才能够实现对应的接口。如果使用值接收者来实现一个接口，那么那个类型的值和指针都能够实现对应的接口。
+	
+	type Phone interface {
+	    call()
+	}
+
+	type NokiaPhone struct {
+	}
+
+	func (nokiaPhone NokiaPhone) call() {
+	    fmt.Println("I am Nokia, I can call you!")
+	}
+
+	type IPhone struct {
+	}
+
+	func (iPhone IPhone) call() {
+	    fmt.Println("I am iPhone, I can call you!")
+	}
+
+	func main() {
+	    var phone Phone
+
+	    phone = new(NokiaPhone)
+	    phone.call() //I am Nokia, I can call you!
+
+	    phone = new(IPhone)
+	    phone.call() //I am iPhone, I can call you!
+
+	}
 	
 嵌入类型
 	通过嵌入类型，与内部类型相关的标识符会提升到外部类型上。这些被提升的标识符就像直接声明在外部类型里的标识符一样，也是外部类型的一部分。这样外部类型就组合了内部类型包
