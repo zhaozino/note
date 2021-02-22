@@ -826,6 +826,14 @@ num := 0
 	
 ****************************************************************************************************************************************
 第5章：Go语言的类型系统；
+	1、struct结构中的类型可以是任意类型；
+	2、struct的存储空间是连续的，其字段按照声明时的顺序存放（注意字段之间有对齐要求）。
+
+	//struct字面量
+	struct{
+		name string
+		age int
+	}
 
 	// user 在程序里定义一个用户类型
 	type user struct {
@@ -849,7 +857,7 @@ num := 0
 		privileged: true,
 	}
 	
-	lisa := user{"Lisa", "lisa@email.com", 123, true}
+	lisa := user{"Lisa", "lisa@email.com", 123, true} //不推荐这种初始化方式，一旦struct增加字段，则整个初始化语句会报错
 	
 	type admin struct {
 		person user
