@@ -2147,6 +2147,52 @@ b := &a
 b++ //报错
 
 
+****************************************************************************************************************************************
+数组
+var arr [2]int
+arr := [3]int{1,2,3}
+arr := [...]int{1,2,3}
+arr := [...]int{1:1, 2:2}
+
+切片
+arr := [...]int{0,1,2,3,4,5}
+s1 := arr[0:4]
+s2 := arr[0:]
+s3 := arr[:4]
+
+a := make([]int, 10)
+b := make([]int, 10, 15)
+
+str := "hello world!"
+c := []byte(str)
+d := []rune(str)
+
+字典 //非并发安全，可以使用sync.map
+m := map[string]int{"a":1, "b":2}
+m1 := make(map[string]int)
+m2 := make(map[string]int, len) //指定长度
+m1["a"] = 3
+
+delete(m, "a") //删除指定的键值对
+
+不能直接修改map value实例中的属性，必须整体赋值
+type User struct{
+  name string
+  age int
+}
+
+m := make(map[int]User)
+
+u := User{
+  name:"zhangsan",
+  int: 18,
+}
+
+m[1] = u
+m[1].age = 19 //error，不能赋值属性
+
+u.age = 19
+m[1] = u
 
 
 
