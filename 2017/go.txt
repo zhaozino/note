@@ -1060,16 +1060,52 @@ num := 0
 	
 	panic(i 工nterface{})
 	revover()interface{}
-	引发panic 有两种情况， 一种是程序主动调用panic 函数，另一种是程序产生运行时错误，由运行时检测井抛出。发生panic 后， 程序会从调用panic 的函数位置或发生panic 的地方立即返回，逐层向上执行函数的defer 语句，然后逐层打印函数调用堆枝，直到被recover 捕获或运行到最外层函数而退出。
-	recover（）用来捕获pan ic ，阻止panic 继续向上传递。recover（）和defer 一起使用，但是recover()只有在defer 后面的函数体内被直接调用才能捕获panic 终止异常，否则返回nil ，异常继续向
-外传递。
+	引发panic 有两种情况， 一种是程序主动调用panic 函数，另一种是程序产生运行时错误，由运行时检测井抛出。发生panic后， 程序会从调用panic的函数位置或发生panic的地方立即返回，逐层向上执行函数的defer语句，然后逐层打印函数调用堆枝，直到被recover捕获或运行到最外层函数而退出。
+	recover()用来捕获panic，阻止panic继续向上传递。recover()和defer一起使用，但是recover()只有在defer 后面的函数体内被直接调用才能捕获panic终止异常，否则返回nil，异常继续向外传递。
+	
+	defer func(){
+		println("defer inner")
+		recover()
+	}
+	可以有连续多个panic被抛出，但只有最后一次panic能被捕获。
+	
+	多个defer以LIFO后进先出的形式执行
+	
+	func main(){
+		defer func(){
+			if err := recover(); err != nil{
+				fmt.println(err)
+			}
+		}()
+		
+		//只有最后一次panic调用能被捕获
+		defer func(){
+			panic("first defer panic")
+		}
+		
+		defer func(){
+			panic("second defer panic")
+		}
+		
+		panic("main body panic")
+	}
 
+	//结果为first defer panic
 
-
-
-
-
-
+	包中init函数引发的panic只能在init函数中捕获，在main中无法被捕获，原因是init函数先于main执行。函数并不能捕获内部新启动的goroutine所抛出的panic。
+	
+错误处理
+	任何类型只要实现Error() string方法，都可以传递eηor接口类型变量。Go 语言典型的错误处理方式是将error作为函数最后一个返回值。在调用函数时，通过检测其返回的error值是否为nil来进行错误处理。
+	Go 语言标准库提供的两个函数返回实现了eηor 接口的具体类型实例，一般的错误可以使用这两个函数进行封装
+	func Errorf(format string, a ...interface{}) error{
+		return errors.New(Sprintf(format, a...))
+	}
+	
+	func New(text string) error{
+		return &errorString{text}
+	}
+	
+	
 接口
 	如果使用指针接收者来实现一个接口，那么只有指向那个类型的指针才能够实现对应的接口。如果使用值接收者来实现一个接口，那么那个类型的值和指针都能够实现对应的接口。
 	
