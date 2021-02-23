@@ -1253,6 +1253,30 @@ num := 0
 
 	}
 	
+	type Inter interface{
+		Ping()
+		Pang()
+	}
+	
+	type (St) Ping(){
+		println("ping")
+	}
+	
+	type (*St) Pang(){
+		println("pang")
+	}
+	
+	func main(){
+		var st *St = nil
+		var it Inter = st
+		
+		st.Pang()//正常
+		it.Pang()//正常
+		
+		st.Ping()//异常
+		it.Ping()//异常
+	}
+	
 嵌入类型
 	通过嵌入类型，与内部类型相关的标识符会提升到外部类型上。这些被提升的标识符就像直接声明在外部类型里的标识符一样，也是外部类型的一部分。这样外部类型就组合了内部类型包
 	含的所有属性，并且可以添加新的字段和方法。外部类型也可以通过声明与内部类型标识符同名的标识符来覆盖内部标识符的字段或者方法。这就是扩展或者修改已有类型的方法。
