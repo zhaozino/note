@@ -1105,6 +1105,48 @@ num := 0
 		return &errorString{text}
 	}
 	
+类型的强制转换：var a T = (T)(b)
+	
+	使用type定义的自定义类型是一个新类型，新类型不能调用原有类型的方法，但是底层类型支持的运算可以被新类型继承。
+	type Map map[int]string
+	
+	变量x的静态类型是T.M是类型T的一个方法，x.T被称为方法值（method value)。x.T是一个函数类型变量， 可以赋值给其他变量，并像普通的函数名一样使用。例如：
+	f := x.M
+	f(args ...)
+	等价于
+	x.M(args ...)
+	
+	方法值（method value）其实是一个带有闭包的函数变量，其底层实现原理和带有闭包的匿名函数类似，接收值被隐式地绑定到方法值（method value）的闭包环境中。后续调用不需要再显式地传递接收者。
+	type T struct{
+		a int
+	}
+	
+	func (t T) Get() int{
+		return t.a
+	}
+	
+	func (t *T) Set(i int){
+		t.a = i
+	}
+	
+	func (t *T) Print(){
+		fmt.Printf("%p, %v, %d \n", t, t, t.a)
+	}
+	
+	var t = &T{}
+	
+	f := t.Set //方法值
+	f(2) //等价于t.Set(2)
+	t.Print()
+	
+	t.Get() //普通方法
+	(T).Get(t) //方法表达式调用式
+	
+	f2 := (T).Get; f2(t) //方法表达式调用
+	
+	//如下方法表达式调用都是等价的
+	(*T).Set(&t, 1)
+	f3 := (*T).Set; f3(&t, 1)
 	
 接口
 	如果使用指针接收者来实现一个接口，那么只有指向那个类型的指针才能够实现对应的接口。如果使用值接收者来实现一个接口，那么那个类型的值和指针都能够实现对应的接口。
