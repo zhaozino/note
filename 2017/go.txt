@@ -1208,6 +1208,20 @@ num := 0
 	g(1,2)
 
 接口
+
+	type Reader interface{
+		Read(p []byte) (n int, err error)
+	}
+	
+	type Writer interface{
+		Write(p []byte) (n int, err error)
+	}
+	
+	type ReadWriter interface{
+		Reader
+		Writer
+	}
+
 	如果使用指针接收者来实现一个接口，那么只有指向那个类型的指针才能够实现对应的接口。如果使用值接收者来实现一个接口，那么那个类型的值和指针都能够实现对应的接口。
 	
 	type Phone interface {
