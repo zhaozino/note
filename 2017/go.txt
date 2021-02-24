@@ -33,8 +33,10 @@ Go runtime的调度器：
 但是无法真正的利用多核。1：1是说，一个用户线程就只在一个内核线程上跑，这时可以利用多核，但是上下文switch很慢。M:N是说， 多个goroutine在多个内核线程上跑，
 这个看似可以集齐上面两者的优势，但是无疑增加了调度的难度。
 
-Go的调度器内部有三个重要的结构：M，P，SM:代表真正的内核OS线程，和POSIX里的thread差不多，真正干活的人G:代表一个goroutine，它有自己的栈，
-instruction pointer和其他信息（正在等待的channel等等），用于调度。P:代表调度的上下文，可以把它看做一个局部的调度器，使go代码在一个线程上跑，它是实现从N:1到N:M映射的关键。
+Go的调度器内部有三个重要的结构：M，P，S
+M:代表真正的内核OS线程，和POSIX里的thread差不多，真正干活的人。
+G:代表一个goroutine，它有自己的栈，G中存放并发执行的代码入口地址、上下文、运行环境（关联的P和M）、运行栈等执行相关的元信息。
+P:代表调度的上下文，可以把它看做一个局部的调度器，使go代码在一个线程上跑，它是实现从N:1到N:M映射的关键。P代表M运行G所需要的资源，是对资源的一种抽象和管理，P不是一段代码实体，而是一个管理的数据结构，P主要是降低M管理调度G的复杂性，增加一个间接的控制层数据结构。每个P有一个本地的可调度G队列，队列里面的G会被M 依次调度执行，如果本地队列空了， 则会去全局队列偷取一部分G，如果全局队列也是空的，则去其他的P 中偷取一部分G，这就是Work Stealing算法的基本原理。
 
 https://www.zhihu.com/question/20862617
 
@@ -2543,4 +2545,19 @@ u.age = 19
 m[1] = u
 
 
+****************************************************************************************************************************************
+在介绍context 包之前，先理解contex t 包的整体工作机制： 第一个创建Context 的goroutine被称为root 节点。root 节点负责创建一个实现Context 接口的具体对象， 并将该对象作为参数传递到其新拉起的goroutine ， 下游的go ro utine 可以继续封装该对象，再传递到更下游的goroutine 。Context 对象在传递的过程中最终形成一个树状的数据结构，这样通过位于root 节点（树的根节点〉的Cont巳xt 对象就能遍历整个Context 对象树， 通知和消息就可以通过root 节点传递出去，实现了上游goroutine 对下游goroutine 的消息传递。
+
+type Context interface{
+	//如果Context实现了超时控制，则该方法返回ok true, deadline为超时时间，否则ok为false
+	Deadline() (deadline time.Time, ok bool)
+	
+	//后端被调的goroutine应该监听该方法返回的chan，以便及时释放资源
+	Done() <-chan struct{}
+	
+	Err() error
+	
+	//可以访问上游goroutine传给下游goroutine的值
+	Value(key interface{}) interface{}
+}
 
