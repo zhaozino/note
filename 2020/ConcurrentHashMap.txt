@@ -8,5 +8,38 @@ remove查找要删的节点e，对e前边的节点进行复制，顺序颠倒，
 
 长度2的n次方
 
+ConcurrentHashMap面试问题
+1、JDK1.7中ConcurrentHashMap是通过分段锁+数组+链表来实现的，在ConcurrentHashMap中保存一个SegMent数组，Segment是继承ReentrantLock的可重入锁，也就是说对于每个Segment的操作可以通过加锁解锁的方式来保证线程的安全性。
+
+2、JDK1.7ConcurrentHashMap中put数据的方式是通过hash的方式先找到插入entry在Segment数组中的位置，然后再通过Hash的方式找到entry在Segment中HashEntry中的位置，然后再执行插入到链表中，其中在对segment操作的时候会进行trylock如果获取到锁则执行插入，如果没有获取到锁则会重试3次还没获取到则用阻塞锁的方式获取锁，同时对链表中的节点进行删除操作时，需要将删除节点的前面所有节点复制一遍然后用头插法插入链表(原因是每个节点的next是final的不可修改)。
+
+3、JDK1.7ConcurrentHashMap中get数据不需要加锁（因为volatile），如果读到的数据为空则会加锁后再读一遍，因为可能由于某个线程在删除某个节点导致读到的数据为空。（删除某个节点需要把前面所有节点复制一遍重新插入）。
+
+4、扩容，不会对整个ConcurrentHashMap扩容只会针对某个segment扩容。
+
+5、jdk1.8中ConcurrentHashMap的结构类似于Hashmap了也是用数组+链表+红黑树来实现的，不过它使用了CAS的方式和Synchronized加锁来保证线程的安全。
+
+7、ConcurrentHashMap扩容是允许多个线程并发进行扩容的，首先构造一个两倍于当前数据长度的数组，然后计算每个线程处理的槽的空间，然后通过死循环依次递减的方式对每个槽位进行判断知道有实际值的槽位，通过将槽位的每个节点分成2个链表将高位逻辑与计算为1的链表插入到i+n的位置，同时将旧的节点设置为占位符然后继续向前推进扩容操作。
+
+8、ConcurrentHashMap的size方法是读取baseCount和CounterCell数据的总数量，因为是并发的也不一定正确；
+
+9、ConcurrentHashMap的弱一致性主要表现在他的一些视图和迭代器上，通过迭代器遍历元素的时候如果之前的元素发生修改是不会抛出fail-fast异常的，后面的元素如果修改了会体现在迭代器遍历的结果上。
+
+4、ConcurrentHashMap迭代器是强一致性还是弱一致性？HashMap呢？
+
+弱一致性，hashmap强一直性。
+
+ConcurrentHashMap可以支持在迭代过程中，向map添加新元素，而HashMap则抛出了ConcurrentModificationException，
+
+因为HashMap包含一个修改计数器，当你调用他的next()方法来获取下一个元素时，迭代器将会用到这个计数器。
+
+
+
 JDK8中ConcurrentHashMap采用了数组+链表+红黑树
 
+1.如果没有初始化，就调用 initTable() 方法来进行初始化；
+2.如果没有 hash 冲突就直接 CAS 无锁插入；
+3.如果需要扩容，就先进行扩容；
+4.如果存在 hash 冲突，就加锁来保证线程安全，两种情况：一种是链表形式就直接遍历到尾端插入，一种是红黑树就按照红黑树结构插入；
+5.如果该链表的数量大于阀值 8，就要先转换成红黑树的结构，break 再一次进入循环
+6.如果添加成功就调用 addCount() 方法统计 size，并且检查是否需要扩容。
