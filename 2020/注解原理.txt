@@ -108,7 +108,9 @@ AnnotationInvocationHandler是JAVA中专门用于处理注解的Handler，这里
 那么这样，一个注解的实例就创建出来了，它本质上就是一个代理类，你应当去理解好 AnnotationInvocationHandler 中 invoke 方法的实现逻辑，这是核心。一句话概括就是，通过方法名返回注解属性值。
 
 
-
+Spring注解
+字段属性、类注解可以使用BeanPostProcesser或InitializingBean等，在加载类时把属性值注入进去
+方法可以使用@Aspect AOP切面，在调用方法前后加入逻辑
 
 
 
