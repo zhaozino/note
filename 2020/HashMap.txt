@@ -1,4 +1,6 @@
 
+jdk1.7 hashmap rehash死锁，jdk8解决了
+
 hashCode、equals：都是Object的方法
 
 (h = key.hashCode()) ^ (h >>> 16)
