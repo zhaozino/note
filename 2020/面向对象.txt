@@ -39,3 +39,139 @@ ClassLoader
   当初始化一个类的时候，如果发现其父类还没有进行过初始化、则需要先初始化其父类。
   虚拟机会保证一个类的<clinit>()方法在多线程环境中被正确加锁和同步。
   
+ClassLoader常用方法：
+
+1、getParent() 返回该类加载器的父类加载器。
+2、loadClass(String name) 加载名称为 name的类，返回的结果是java.lang.Class类的实例。
+此方法负责加载指定名字的类，首先会从已加载的类中去寻找，如果没有找到；从parent ClassLoader[ExtClassLoader]中加载；如果没有加载到，则从Bootstrap ClassLoader中尝试加载(findBootstrapClassOrNull方法), 如果还是加载失败，则自己加载。如果还不能加载，则抛出异常ClassNotFoundException。
+3、findClass(String name) 查找名称为 name的类，返回的结果是java.lang.Class类的实例。
+4、findLoadedClass(String name) 查找名称为 name的已经被加载过的类，返回的结果是 java.lang.Class类的实例。
+5、defineClass(String name, byte[] b, int off, int len) 把字节数组 b中的内容转换成 Java 类，返回的结果是java.lang.Class类的实例。这个方法被声明为 final的。
+6、resolveClass(Class<?> c) 链接指定的 Java 类。
+
+双亲委派
+某个特定的类加载器接收到类加载的请求时，会将加载任务委托给自己的父类，直到最高级父类引导类加载器（bootstrap class loader），如果父类能够加载就加载，不能加载则返回到子类进行加载。如果都不能加载则报错。ClassNotFoundException
+
+双亲委托机制是为了保证 Java 核心库的类型安全。这种机制保证不会出现用户自己能定义java.lang.Object类等的情况。例如，用户定义了java.lang.String，那么加载这个类时最高级父类会首先加载，发现核心类中也有这个类，那么就加载了核心类库，而自定义的永远都不会加载。
+
+值得注意是，双亲委托机制是代理模式的一种，但并不是所有的类加载器都采用双亲委托机制。在tomcat服务器类加载器也使用代理模式，所不同的是它是首先尝试去加载某个类，如果找不到再代理给父类加载器。这与一般类加载器的顺序是相反的。
+
+双亲委派机制的好处：
+　　保证java核心库的安全性（例如：如果用户自己写了一个java.lang.String类就会因为双亲委派机制不能被加载，不会破坏原生的String类的加载）
+
+代理模式
+　　与双亲委派机制相反，代理模式是先自己尝试加载，如果无法加载则向上传递。tomcat就是代理模式。
+
+自定义类加载器的流程
+
+（1）首先检查请求的类型是否已经被这个类装载器装载到命名空间中了，如果已经装载，直接返回；否则转入步骤2。
+（2）委派类加载请求给父类加载器，如果父类加载器能够完成，则返回父类加载器加载的Class实例；否则转入步骤3。
+（3）调用本类加载器的findClass（…）方法，试图获取对应的字节码，如果获取的到，则调用defineClass（…）导入类型到方法区；如果获取不到对应的字节码或者其他原因失败，返回异常给loadClass（…）， loadClass（…）转抛异常，终止加载过程（注意：这里的异常种类不止一种）。
+- 注意：被两个类加载器加载的同一个类，JVM认为是不相同的类。
+
+import java.io.*;
+
+/**
+ * @ClassName FileSystemClassLoader
+ * @Description 自定义文件类加载器
+ * @Author xwd
+ * @Date 2018/10/24 9:23
+ */
+public class FileSystemClassLoader extends ClassLoader {
+    private String rootDir;//根目录
+
+    public FileSystemClassLoader(String rootDir) {
+        this.rootDir = rootDir;
+    }
+
+    /**
+     * @MethodName findClass
+     * @Descrition 加载类
+     * @Param [name]
+     * @return java.lang.Class<?>
+     */
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        Class<?> loadedClass = findLoadedClass(name);//查询该类是否已经被加载过
+        if(loadedClass != null){  //该类已经被加载过了,直接返回
+            return loadedClass;
+        }else{  //该类还没有被加载过
+            ClassLoader classLoader = this.getParent();//委派给父类加载
+            try {
+                loadedClass = classLoader.loadClass(name);
+            } catch (ClassNotFoundException e) {
+//                e.printStackTrace();
+            }
+            if(loadedClass != null){  //父类加载成功,返回
+                return loadedClass;
+            }else{
+                byte[] classData = getClassData(name);
+                if(classData == null){
+                    throw new ClassNotFoundException();
+                }else{
+                    loadedClass = defineClass(getName(),classData,0,classData.length);
+                }
+            }
+        }
+        return loadedClass;
+    }
+
+    /**
+     * @MethodName getClassData
+     * @Descrition 根据类名获得对应的字节数组
+     * @Param [name]
+     * @return byte[]
+     */
+    private byte[] getClassData(String name) {
+        //pri.xiaowd.test.A  -->  D:/myjava/pei/xiaowd/test/A.class
+        String path = rootDir + "/" + name.replace('.','/') + ".class";
+//        System.out.println(path);
+        InputStream is = null;
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        try {
+            is = new FileInputStream(path);
+
+            byte[] bytes = new byte[1024];
+            int temp = 0;
+            while((temp = is.read(bytes)) != -1){
+                baos.write(bytes,0,temp);
+            }
+            return baos.toByteArray();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        } finally {
+            try {
+                if(baos != null){
+                    baos.close();
+                }
+                if(is != null){
+                    is.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+线程上下文类加载器
+
+通常当你需要动态加载资源的时候 , 你至少有三个 ClassLoader 可以选择 :
+1.系统类加载器或叫作应用类加载器 (system classloader or application classloader)：ClassLoader.getSystemClassLoader()
+2.当前类加载器
+3.当前线程类加载器
+
+当前线程类加载器是为了抛弃双亲委派加载链模式。
+每个线程都有一个关联的上下文类加载器。如果你使用new Thread()方式生成新的线程，新线程将继承其父线程的上下文类加载器。如果程序对线程上下文类加载器没有任何改动的话，程序中所有的线程将都使用系统类加载器作为上
+下文类加载器。
+• Thread.currentThread().getContextClassLoader()
+
+Tomcat服务器的类加载器
+每个 Web 应用都有一个对应的类加载器实例。该类加载器也使用代理模式(不同于前面说的双亲委托机制)，所不同的是它是首先尝试去加载某个类，如果找不到再代理给父类加载器。这与一般类加载器的顺序是相反的。但也是为了保证安全，这样核心库就不在查询范围之内。
+
+既然 Tomcat 不遵循双亲委派机制，那么如果我自己定义一个恶意的HashMap，会不会有风险呢？
