@@ -599,3 +599,52 @@ keepAliveTime的计量单位
 
 4、DiscardOldestPolicy
 该策略下，抛弃进入队列最早的那个任务，然后尝试把这次拒绝的任务放入队列
+
+
+
+自定义线程池
+class CustomTask implements Runnable{
+    private  int id;
+    public CustomTask(int id) {
+        this.id = id;
+    }
+
+    @Override
+    public void run() {
+        // TODO Auto-generated method stub
+        System.out.println("#" + id + "   threadId=" + Thread.currentThread().getName() );
+        try {
+            TimeUnit.MILLISECONDS.sleep(100);
+        }catch(InterruptedException e){
+            e.printStackTrace();
+        }
+    }
+
+}
+
+public class CustomThreadPool {
+    public static void main(String[] args) {
+        // TODO Auto-generated method stub
+            BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(10);
+            ThreadPoolExecutor pool = new ThreadPoolExecutor(3, 5, 60, TimeUnit.MICROSECONDS, queue);
+
+            for (int i=0; i<7; i++){
+                Runnable task = new CustomTask(i);
+                pool.execute(task);
+            }
+
+            pool.shutdown();
+    }
+
+}
+
+（1），如果当前线程池线程数目小于 corePoolSize（核心池还没满呢），那么就创建一个新线程去处理任务。
+（2），如果核心池已经满了，来了一个新的任务后，会尝试将其添加到任务队列中，如果成功，则等待空闲线程将其从队列中取出并且执行，如果队列已经满了，则继续下一步。
+（3），此时，如果线程池线程数量 小于 maximumPoolSize，则创建一个新线程执行任务，否则，那就说明线程池到了最大饱和能力了，没办法再处理了，此时就按照拒绝策略来处理。（就是构造函数当中的Handler对象）。
+
+（4），如果线程池的线程数量大于corePoolSize，则当某个线程的空闲时间超过了keepAliveTime，那么这个线程就要被销毁了，直到线程池中线程数量不大于corePoolSize为止。
+
+（1） shutdown()，平滑的关闭线程池。（如果还有未执行完的任务，就等待它们执行完）。
+（2） shutdownNow()。简单粗暴的关闭线程池。（没有执行完的任务也直接关闭）。
+（3） setCorePoolSize()。设置/更改核心池的大小。
+（4） setMaximumPoolSize（），设置/更改线程池中最大线程的数量限制。
