@@ -116,3 +116,51 @@ sign=hash_hmac("sha256",stringSignTemp,key).toUpperCase()="6A9AE1657590FD6257D69
 
 微信支付接口中，涉及资金回滚的接口会使用到API证书，包括退款、撤销接口。商家在申请微信支付成功后，收到的相应邮件后，可以按照指引下载API证书，也可以按照以下路径下载：微信商户平台(pay.weixin.qq.com)-->账户中心-->账户设置-->API安全；
 
+
+md5加盐
+用户名/密码 md5加密，黑客获取数据库表后，通过把666666/888888等常用的密码算出md5进行碰库，容易得到用户的密码，为了防止这种情况，可以为md5加盐，如：md5(password + 固定盐字符串)，但固定的盐字符串也有可能泄密，所以盐要随机，加在md5之后的结果里：
+
+public static Guid ToRandomMD5(string input)
+{
+    using (var md5Provider = new MD5CryptoServiceProvider())
+    {
+        //获取一个256以内的随机数,用于充当 "盐"
+        var salt = (byte)Math.Abs(new object().GetHashCode() % 256);
+        input += salt;
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = md5Provider.ComputeHash(bytes);
+        hash[0] = salt;
+        return new Guid(hash);
+    }
+}
+ 
+public static bool EqualsRandomMD5(string input, Guid rmd5)
+{
+    var arr = rmd5.ToByteArray();
+    //将盐取出来
+    var salt = arr[0];
+    using (var md5Provider = new MD5CryptoServiceProvider())
+    {
+        input += salt;
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = md5Provider.ComputeHash(bytes);
+        for (int i = 1; i < 16; i++)
+        {
+            if (hash[i] != arr[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+简单的来说就是把盐放到密文里面 md5 hash完之后得到一个16长度的byte 而byte可以保存0~255的整数 ,所以例子里面,随机的盐就是0~255的数字
+
+然后md5(明文+盐)之后 再将盐保存到 byte[0] 的位置
+
+这样每次hash之后 密文都是不同的 但是依然可以直接密文比较, 这里就是抛砖引玉,觉得255不够的 还可以加一位
+
+当然也可以直接放在1~15的索引上
+
+当然也可以把索引15的byte对15取余后得到0~14然后再放进去....
