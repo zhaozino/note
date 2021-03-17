@@ -73,3 +73,5 @@ lock对象、线程A和线程B三者是一种什么关系？根据上面的结�
 疑问二：线程A获取了synchronized锁，执行wait方法并挂起，线程B又如何再次获取锁？
 
 答：线程A 在 执行lock.wait() 时，会阻塞线程A，同时立即释放 lock锁， 这样 线程B 才能再次获取 lock对象锁。
+
+https://www.cnblogs.com/myseries/p/10918819.html
