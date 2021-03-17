@@ -1,0 +1,23 @@
+https://blog.csdn.net/qq_30431719/article/details/80989762?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control&dist_request_id=&depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control
+
+volatile可以修饰对象A和数组B，但会对A/B的基本类型的属性有可见性，对A/B的对象类型的属性的属性不具有可见性；
+
+比如：
+
+public class A{
+  
+  private volatile B b;
+  
+}
+
+public class B{
+  private String str;
+  
+  private C c;
+}
+
+public class C{
+  private String item;
+}
+
+那么多线程对b有可见性，对str也有可见性，但对item不具有可见性；
