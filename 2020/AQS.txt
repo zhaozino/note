@@ -1,1 +1,23 @@
 https://juejin.cn/post/6844904035862986765?utm_source=gold_browser_extension%3Futm_source%3Dgold_browser_extension
+
+AbstractQueuedSynchronizer：state变量是int类型
+AbstractQueuedLongSynchronizer：state变量是long类型
+
+AQS其实主要做了这么几件事情：
+  1、同步状态（state）的维护管理：线程获取锁+1，解锁-1；volatile state、CAS；
+  2、等待队列的维护管理；
+  3、线程的阻塞与唤醒；lockSupport.park()/unPark()
+
+FIFO双端双向链表，先进先出的同步队列；
+
+head 头结点，但是这个头节点只是个虚节点，只是逻辑上代表持有锁的线程节点，且head节点是不存储thread线程信息和前驱节点信息的。volatile
+tail 尾节点，每个新节点都会进入队尾。volatile
+
+AQS内部的cas操作，都是依赖Unsafe类的，自Java9之后的版本，Unsafe类被移除，取而代之的是VarHandle类。
+
+A线程获得锁；
+B线程被包装成Node，被放到同步队列队尾，通过LockSupport.park()挂起；
+C线程同上；
+
+A线程释放锁
+LockSupport.unPark(head.next())：即B从被挂起的地方重新执行，重新尝试获取锁。
