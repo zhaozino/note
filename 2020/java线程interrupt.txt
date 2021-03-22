@@ -12,3 +12,7 @@ class Example3 extends Thread {
     Thread.sleep( 100000 );
   }
 }
+
+
+https://copyfuture.com/blogs-details/20201111092324328kg5th4hcf2gvjdk
+Java线程中断(Interrupt)与阻塞(park)的区别
