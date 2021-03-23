@@ -670,3 +670,105 @@ Spring MVC
 		</bean>
 
 springboot 常用注解、spi、自定义注解
+
+************************************************************************************************
+拦截器
+HandlerInterceptor、WebRequestInterceptor、
+
+public class InterceptorDemo extends HandlerInterceptorAdapter {
+
+
+    @Override
+    public boolean preHandle(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o) throws Exception {
+        StringBuffer requestURL = httpServletRequest.getRequestURL();
+        System.out.println("前置拦截器1 preHandle： 请求的uri为："+requestURL.toString());
+        return true;
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o, ModelAndView modelAndView) throws Exception {
+        System.out.println("拦截器1 postHandle： ");
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o, Exception e) throws Exception {
+        System.out.println("拦截器1 afterCompletion： ");
+    }
+}
+
+@Configuration
+public class InterceptorConfig implements WebMvcConfigurer{
+
+	 /**
+     * 注册自定义拦截器
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        
+       	registry.addInterceptor(new InterceptorDemo2()).addPathPatterns("/**");
+        registry.addInterceptor(new InterceptorDemo()).addPathPatterns("/**");
+    }
+ }
+
+**********************************************************************************************************
+过滤器Filter
+
+@WebFilter(urlPatterns = "/*",filterName = "filter2")
+public class FilterAnnotationTest implements Filter {
+
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+        System.out.println("过滤器2开始初始化");
+    }
+
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+        System.out.println("过滤器2开始工作");
+        filterChain.doFilter(servletRequest,servletResponse);
+    }
+
+    @Override
+    public void destroy() {
+        System.out.println("过滤器2销毁");
+    }
+}
+
+2.3 过滤器filter和拦截器Interceptor的区别
+spring的拦截器和servlet的过滤器有相似之处，都是AOP思想的体现，都可以实现权限检查，日志记录，不同的是
+
+适用范围不同：Filter是Servlet容器规定的，只能使用在servlet容器中，而拦截器的使用范围就大得多
+使用的资源不同：拦截器是属于spring的一个组件，因此可以使用spring的所有资源，对象，如service对象，数据源，事务控制等，而过滤器就不行
+深度不同：Filter还在servlet前后起作用。而拦截器能够深入到方法前后，异常抛出前后，因此拦截器具有更大的弹性，所有在spring框架中应该优先使用拦截器。
+通过调试可以发现，拦截器的执行过程是在过滤器的doFilter中执行的，过滤器的初始化会在项目启动时执行。
+
+*********************************************************************************************
+监听器
+@WebListener
+public class WebListenerDemo implements ServletContextListener {
+
+
+    @Override
+    public void contextInitialized(ServletContextEvent sce) {
+        System.out.println("监听器初始化。。。。。。。。。。。。");
+    }
+
+    @Override
+    public void contextDestroyed(ServletContextEvent sce) {
+        System.out.println("监听器销毁。。。。。。。。。。。");
+    }
+}
+
+@WebListener
+public class SessionListener implements HttpSessionListener {
+
+    @Override
+    public void sessionCreated(HttpSessionEvent se) {
+        System.out.println("。。。创建session成功");
+    }
+
+    @Override
+    public void sessionDestroyed(HttpSessionEvent se) {
+        System.out.println("。。。销毁session");
+    }
+}
+
