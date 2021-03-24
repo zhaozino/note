@@ -78,11 +78,28 @@ T10
 	灰度、自动化部署、自动化测试、全链路压测、Scrum、Devops
 	mysql、hbase、redis、es、Druid
 
+************************************************************************************************************
 
+redis：over
+kafka
+mysql/mongodb：
+elasticSearch：
+etcd/zookeeper：proxy、raft
+hadoop/yarn：
+spark
+flink
+hbase
+druid/prometheus/clickHouse
+skywalking：javaAgent、clssLoader、java序列化
+Netty
+myCat：分库、分表、动态扩容（2的N次方）
+设计模式、数据结构、计算机网络、深入jvm、java多线程
 
+docker、k8s、istio
 
+机器学习、AI
 
-
+灰度、自动化部署、自动化测试、全链路压测
 
 
 
