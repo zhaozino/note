@@ -1,0 +1,19 @@
+1、useradd tom
+2、passwd tom：输入密码
+3、visudo：添加到sudo
+  root    ALL=(ALL)       ALL
+  tom     ALL=(ALL)       ALL                 # 新增
+  
+4、sudo usermod -aG docker ${USER}
+
+5、sudo - tom
+6、man newgrp         # newgrp - 登录到一个新组     
+7、newgrp docker
+
+8、安装docker并启动
+
+9、安装miniKube
+  curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-latest.x86_64.rpm
+  sudo rpm -ivh minikube-latest.x86_64.rpm
+  
+  minikube start --driver=docker --image-mirror-country=cn --image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers
