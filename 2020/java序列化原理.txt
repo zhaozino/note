@@ -1,1 +1,36 @@
 
+序列化
+是指将Java对象保存为二进制字节码的过程。
+反序列化
+将二进制字节码重新转成Java对象的过程。
+
+static和transient字段不能被序列化：序列化是针对对象实例的，而static字段属于class类，不属于对象实例；
+
+FileOutputStream fos = new FileOutputStream("temp.out");
+ObjectOutputStream oos = new ObjectOutputStream(fos);
+TestObject testObject = new TestObject();
+oos.writeObject(testObject);
+oos.flush();
+oos.close();
+
+FileInputStream fis = new FileInputStream("temp.out");
+ObjectInputStream ois = new ObjectInputStream(fis);
+TestObject deTest = (TestObject) ois.readObject();
+
+这个 serialVersionUID 是什么以及它的作用是什么？
+这个值是用于确保类序列化与反序列化的兼容性问题的，如果序列化和反序列化过程中这两个值不一样，那么将导致序列化失败，具体可以看下面的 serialVersionUID 兼容性问题。
+
+Java 的序列化步骤与数据结构分析
+序列化算法一般会按步骤做如下事情：
+
+1、将对象实例相关的类元数据输出。
+2、递归地输出类的超类描述直到不再有超类。
+3、类元数据完了以后，开始从最顶层的超类开始输出对象实例的实际数据值。
+4、从上至下递归输出实例的数据。
+
+对于JVM来说，要进行持久化的类必须要有一个标记，只有持有这个标记JVM才允许类创建的对象可以通过其IO系统转换为字节数据，从而实现持久化，而这个标记就是Serializable接口。而在反序列化的过程中则需要使用serialVersionUID来确定由那个类来加载这个对象，所以我们在实现Serializable接口的时候，一般还会要去尽量显示地定义serialVersionUID。
+
+Serializable是java.io包中定义的、用于实现Java类的序列化操作而提供的一个语义级别的接口。Serializable序列化接口没有任何方法或者字段，只是用于标识可序列化的语义。
+
+序列化对于面向对象的编程语言来说是非常重要的，因为无论什么编程语言，其底层涉及IO操作的部分还是由操作系统其帮其完成的，而底层IO操作都是以字节流的方式进行的，所以写操作都涉及将编程语言数据类型转换为字节流，而读操作则又涉及将字节流转化为编程语言类型的特定数据类型。而Java作为一门面向对象的编程语言，对象作为其主要数据的类型载体，为了完成对象数据的读写操作，也就需要一种方式来让JVM知道在进行IO操作时如何将对象数据转换为字节流，以及如何将字节流数据转换为特定的对象，而Serializable接口就承担了这样一个角色。
+
