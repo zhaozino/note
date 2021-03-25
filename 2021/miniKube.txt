@@ -7,13 +7,19 @@
 4、sudo usermod -aG docker ${USER}
 
 5、sudo - tom
-6、man newgrp         # newgrp - 登录到一个新组     
-7、newgrp docker
 
 8、安装docker并启动
 
 9、安装miniKube
-  curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-latest.x86_64.rpm
+  curl -LO https://storage.googleapis.com/minikube/releases/v1.7.1/minikube-1.7.1.x86_64.rpm
   sudo rpm -ivh minikube-latest.x86_64.rpm
   
-  minikube start --driver=docker --image-mirror-country=cn --image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers
+  minikube start --driver=docker --image-mirror-country=cn --image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers --cpu 4 --memory 8192
+
+10、验证
+  kubectl get po -A
+  
+  minikube board & //可以用nginx做反向代理
+  
+11、安装istio
+  
