@@ -81,19 +81,19 @@ T10
 ************************************************************************************************************
 
 redis：over
-kafka
-mysql/mongodb：
-elasticSearch：
-etcd/zookeeper：proxy、raft
-hadoop/yarn：
-spark
-flink
-hbase
-druid/prometheus/clickHouse
-skywalking：javaAgent、clssLoader、java序列化
-Netty
-myCat：分库、分表、动态扩容（2的N次方）
-设计模式、数据结构、计算机网络、深入jvm、java多线程
+mysql/mongodb：04.4
+kafka：04.11
+etcd/zookeeper、proxy、raft：05.01
+elasticSearch：05.07
+flink：06.01
+spark：06.15
+hbase：06.22
+hadoop/yarn：07.01
+druid/prometheus/clickHouse：07.15
+skywalking：javaAgent、clssLoader、java序列化：08.01
+myCat：分库、分表、动态扩容（2的N次方）：08.08
+设计模式、数据结构、计算机网络、深入jvm、java多线程：09.01
+Netty：09.07
 
 docker、k8s、istio
 
