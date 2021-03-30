@@ -407,9 +407,32 @@ MongoDB优化
 MongoDB不适合的场景：1、不支持事务；2、关联查询；
 	
 	
-	
-	
-	
+addToSet、pull、push数组时，数组不能为null，否则会抛异常（如果addToSet、pull、push一个不存在的字段时反而正常），多数mongodb驱动，在insert一个文档时，实体类中数组属性默认为null，并非没有，所以很容易造成异常；
+
+mongo geo索引：point、Polygon
+其中Polygon类型是[][][]float类型，并且定义的坐标要是个闭环：
+"loc" : {
+        "type" : "Polygon",
+        "coordinates" : [ 
+            [ 
+                [ 
+                    0, 
+                    0
+                ], 
+                [ 
+                    3, 
+                    6
+                ], 
+                [ 
+                    6, 
+                    1
+                ], 
+                [ 
+                    0, 
+                    0
+                ]
+            ]
+        ]
 	
 	
 	
