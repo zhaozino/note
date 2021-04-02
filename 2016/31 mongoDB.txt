@@ -436,7 +436,11 @@ mongo geo索引：point、Polygon
 	
 	
 	
-	
+mongo host:port/admin myscript.js -uuser -p
+
+myscript.js如下：
+printjson(db.getSisterDB("myDbName").getCollection("myCollectionName").insert(...);
+printjson(db.getSisterDB("myDbName").getCollection("myCollectionName").insert(...);
 	
 	
 	
