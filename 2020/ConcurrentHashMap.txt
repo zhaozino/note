@@ -45,3 +45,13 @@ JDK8中ConcurrentHashMap采用了数组+链表+红黑树
 6.如果添加成功就调用 addCount() 方法统计 size，并且检查是否需要扩容。
 
 数组里保存的也是一个节点node，当node为空时，用CAS，不为空时使用synchronized
+
+CouncurrentHashMap
+<jdk1.7>：数组（Segment） + 数组（HashEntry） + 链表（HashEntry节点）
+底层一个Segments数组，存储一个Segments对象，一个Segments中储存一个Entry数组，存储的每个Entry对象又是一个链表头结点。
+class Segment内部类，继承ReentrantLock，有一个HashEntry数组，用来存储链表头结点
+<jdk1.8> ：使用 Node数组+链表/红黑树
+Node数组使用来存放树或者链表的头结点，当一个链表中的数量到达一个数目时，会使查询速率降低，所以到达一定阈值时，会将一个链表转换为一个红黑二叉树，通告查询的速率。
+https://blog.csdn.net/qq_41884976/article/details/89532816
+
+
