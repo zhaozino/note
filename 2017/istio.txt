@@ -77,7 +77,14 @@ Virtual Service
 	
 
 	
-	
+istio-pilot：控制面，服务发现、配置中心，主要是流量管理，如负载均衡、灰度、A/B Test等；
+istio-telemetry：控制面，监控指标、日志、调用链等上报；
+istio-policy：提供服务调用的黑白名单、流量配额等，和pilot的区别是，它的流量策略需要调用第三方服务接口来查询；
+istio-citadel：安全、认证、授权；
+istio-galley：负责对接pilot、mixer的相关配置、校验，第三方服务只需和galey对接配置即可，解耦第三方服务和piloy、mixer；
+istio-sidecar-injector：拦截pod生成side-car；
+istio-proxy：即Envoy，数据面
+istio-ingressgateway：入口
 	
 	
 	
