@@ -1,0 +1,100 @@
+
+custom_prometheus_request_count
+	查询最近（默认5分钟）的数据，agent上传的所有的指标点，不做任何聚合；
+	相当于：custom_prometheus_request_count[5m:5m]
+	
+custom_prometheus_request_count[1m]
+	查询最近一分钟，agent上传的所有的指标点，不做任何聚合；
+
+custom_prometheus_request_count offset 10m
+	查询10分钟之前的数据，agent上传的所有的指标点，不做任何聚合；
+	
+<instant_query> '[' <range> ':' [<resolution>] ']' [ offset <duration> ]
+custom_prometheus_request_count[3m:1m]
+	查询最近3分钟，agent上传的所有的指标点，不做任何聚合，且每1分钟取一个点（可能是取中间的点）；
+	
+custom_prometheus_request_count[3m:1m] offset 10m
+	查询10分钟之前的数据，3分钟范围（-10m ~ -13m），agent上传的所有的指标点，不做任何聚合，且每1分钟取一个点（可能是取中间的点）；
+
+sum是针对label的聚合，sum会返回多个时间点的值
+sum(custom_prometheus_request_count)
+	按label聚合，会把所有label聚合起来，但时间点还是agent上传的所有时间点；
+	sum函数返回的还是一个指标序列，所以还可以在上面使用函数；
+
+sum(custom_prometheus_request_count{serviceName="/user/help/test"})[2m:1m]
+	如果某个时间点没指标的话，它会使用上个时间点的指标值，导致聚合的值不准；
+
+sum_over_time是针对时间戳的聚合，sum_over_time会返回多个label的指标值
+sum_over_time(custom_prometheus_request_count{serviceName="/user/help/test"}[2m:1m])
+	如果某个时间点没指标的话，它会使用上个时间点的指标值，导致聚合的值不准；
+
+sum_over_time(custom_prometheus_request_count{serviceName="/user/help/test"}[15m])
+	这个聚合值是准的，15m是查询15m以前到现在的数据
+		
+rate(http_requests_total{job="api-server"}[5m])
+	最后五分钟HTTP请求每秒增长率，rate应该只和计数器一起使用。最适合告警和缓慢计数器的绘图。
+	rate()函数计算某个时间序列范围内的每秒平均增长率，自适应单调性中断(比如target重启导致的计数器重置)。
+		
+irate(http_requests_total{job="api-server"}[5m])
+	五分钟内最近两次数据点的HTTP请求每秒增长率
+	irate()函数计算一段时间范围内某个时刻的每秒增长率，基于最后两个数据点进行计算. 自适应单调性中断(比如target重启导致的计数器重置)。
+		
+rate VS irate
+	rate函数在一个时间范围内构建时间序列，基于设定范围内的第一个和最后一个数据点来计算每秒比率(允许计数器重置)，(last值-first值)/时间差。
+	因为它是基于范围的，实际上它是某个范围的平均值 – 在本例是5分钟。在上图中，你可以看到绿线对数据的变化响应慢，而且没有显示详情。
+	相比之下，irate是一个瞬时比率。 它只观测设定的范围内的最后两个点，并计算每秒的速率，(last值-last前一个值)/时间戳差值。在上图中，
+	拉取间隔为10秒，那么红线看到更多的峰值和更详细的细节。这让你更好地了解实际情况，充分利用数据的全分辨率。
+	如果irate只需要最近两个点的数据，那为什么我们要传比这两个点长得多的时间范围呢？答案是，你想要限制这两点的取值范围，因为你不希望使用几个小时前的数据。
+	还有另外一个好处，在面板(dashboards)选择比率范围(rate range)时，不需要考虑所有可能的拉取间隔(scrape intervals)。因为那样做通常会导致计算的时间比需要的长得多。
+	如果拉取动作(scrape)变得更频繁，图像会自动提高分辨率。
+	
+指标类型：
+	Counter：计数器，统计次数，只增不减，对重置的数据，一些聚合函数会自动处理，如rate等；
+	Gauge：仪表盘，计算内存等大小可变的度量；
+	Histogram：直方图，数据分布统计；
+	Summary：摘要，类似Histogram，统计方式不同；
+	
+	# HELP logback_events_total Number of error level events that made it to the logs
+	# TYPE logback_events_total counter
+	logback_events_total{application="myDemo",level="info",} 7.0 1562135533760
+	logback_events_total{application="myDemo",level="trace",} 5.0 1562135533760
+	logback_events_total{application="myDemo",level="debug",} 6.0 1562135533760
+	logback_events_total{application="myDemo",level="error",} 1.0 1562135533760
+	logback_events_total{application="myDemo",level="warn",} 2.0 1562135533760
+	
+	
+	# HELP jvm_threads_states_threads The current number of threads having NEW state
+	# TYPE jvm_threads_states_threads gauge
+	jvm_threads_states_threads{application="myDemo",state="runnable",} 8.0 1562135533760
+	jvm_threads_states_threads{application="myDemo",state="new",} 0.0 1562135533760
+	jvm_threads_states_threads{application="myDemo",state="blocked",} 0.0 1562135533760
+	jvm_threads_states_threads{application="myDemo",state="waiting",} 12.0 1562135533760
+	jvm_threads_states_threads{application="myDemo",state="timed-waiting",} 2.0 1562135533760
+	jvm_threads_states_threads{application="myDemo",state="terminated",} 0.0 1562135533760
+	
+	
+	# HELP http_requests_histogram http请求分布
+	# TYPE http_requests_histogram histogram
+	http_requests_histogram_count{serviceName="/user/help/metric", status="200"} 8.0 1562135533760
+	http_requests_histogram_sum{serviceName="/user/help/metric", status="200"} 1024.0 1562135533760
+	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="200"} 1.0 1562135533760
+	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="400"} 2.0 1562135533760
+	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="800"} 4.0 1562135533760
+	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="1000"} 6.0 1562135533760
+	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="+Inf"} 8.0 1562135533760
+	
+	
+	# HELP http_requests_histogram http请求分布
+	# TYPE http_requests_histogram summary
+	http_requests_histogram_count{serviceName="/user/help/metric", status="200"} 8.0 1562135533760
+	http_requests_histogram_sum{serviceName="/user/help/metric", status="200"} 1024.0 1562135533760
+	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.5"} 100.0 1562135533760
+	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.9"} 200.0 1562135533760
+	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.99"} 400.0 1562135533760
+		
+**************************************************************************************************
+码客：sum(sum_over_time(custom_prometheus_request_count{serviceName="/user/help/test"}[1m]))
+
+	
+	
+
