@@ -14,7 +14,7 @@
   curl -LO https://storage.googleapis.com/minikube/releases/v1.7.1/minikube-1.7.1.x86_64.rpm
   sudo rpm -ivh minikube-latest.x86_64.rpm
   
-  minikube start --driver=docker --image-mirror-country=cn --image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers --cpu 4 --memory 8192
+  minikube start --driver=docker --image-mirror-country=cn --image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers --cpus 4 --memory 8192
 
 10、验证
   kubectl get po -A
