@@ -533,7 +533,9 @@ redo log重点是故障中，缓存脏页未能写入磁盘的数据，能通过
 mysql的更新操作时，先写redoloy，然后更新到缓存，待缓存积累到一定程度，再把整个页刷新到磁盘上。
 
 redolog是物理日志，即某个偏移量写入什么值，binlog是逻辑日志，即某一列加5；
-	
+
+24 个必须掌握的数据库面试问题！
+https://mp.weixin.qq.com/s/pC0_Y7M7BkoUmlRwneZZdA
 	
 	
 	
