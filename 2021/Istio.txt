@@ -1,0 +1,132 @@
+
+1、Istio是一个用于服务治理的开放平台；
+2、Istio是一个Service Mesh形态的用于服务治理的开放平台；
+3、Istio是一个与K8S紧密结合的适用于云原生场景的Service Mesh形态的用于服务治理的开放平台；
+
+服务治理涉及：连接(Connect)、安全(Secure)、策略执行(Control)、可观察性(Observe)
+1、连接：Istio通过集中配置的流量规则控制服务间的流量和调用，实现负载均衡、熔断、故障注入、重试、重定向等服务治理功能；
+2、安全：Istio提供透明的认证机制、通道加密、服务访问授权等安全能力，可增强服务访问的安全性；
+3、策略执行：Istio通过可动态插拔、可扩展的策略实现访问控制、速率限制、配额管理、服务计费等能力；
+4、可观察性：动态获取服务运行数据和输出，提供强大的调用链、监控和调用日志收集输出的能力。配合可视化工具，可方便运维人员了解服务的运行状况，发现并解决问题；
+
+Istio的所有路由规则和控制策略都是通过k8s CRD实现的，因此各种规则策略对应的数据也被存储在Kube-apiserver中，不需要另外一个单独的APIServer和后端的配置管理。
+	所以，可以说Istio的APIServer就是k8s的APIServer，数据也自然地被存在了对应k8s的etcd中。
+
+Istio的几个资源对象就是基于k8s的相应资源对象构建的，加上部分约束来满足istio服务模型的，Istio官方对这几个约束的描述如下：
+1、端口命名：对Istio的服务端口必须进行命名，而且名称只允许是<protocol>[-<suffix>]这种格式，其中<protocol>可以是tcp、http、http2、https、grpc、tls、mongo、mysql、redis等，
+	Istio根据在端口上定义的协议来提供对应的路由能力。如：name: http2-forecast，如果端口未命名或没有基于这种格式进行命名，则端口的流量会被当作TCP流量来处理；
+2、服务关联：Pod需要关联到服务，如果一个Pod属于多个k8s服务，则要求服务不能在同一个端口上使用不同的协议。
+3、Deployment使用app和version标签：建议k8s Deployment显式地包含app和version标签。每个Deployment都需要有一个有业务意义的app标签和一个表示版本的version标签。
+	在分布式追踪时可以通过app标签来补齐上下文信息，还可以通过app和version标签为遥测数据补齐上下文信息。
+
+从逻辑上看，服务是Istio主要管理的资源对象，是一个抽象概念，主要包含HostName和Ports等属性，并指定了Service的域名和端口列表。每个端口都包含端口名称、端口号和端口的协议；
+从物理层面看，Istio服务的存在形式就是k8s的service，在启用了Istio的集群中创建k8s的service时只要满足以上约束，就可以转换为Istio的service并配置规则进行流量治理；
+
+k8s自动创建一个和service同名的Endpoints对象，service的selector会持续关注属于service的pod，结果会被更新到相应的Endpoints对象；
+
+Istio的service比较简单，可以看到差别就是要满足Istio服务的约束，并在端口名称上指定协议。例如，在以下示例中指定了forecast服务的3002端口是HTTP，对这个服务的访问就可以应用
+	HTTP的诸多治理规则：
+	
+	apiVersion: v1
+	kind: Service
+	metadata:
+		name: forecast
+	spec:
+		ports:
+			- port: 3002
+			targetPort: 3002
+			name: http
+		selector:
+			app: forecast
+			
+Istio虽然依赖于了k8s的service定义，但是除了一些约束，在定位上还有些差别。在k8s中，一般通过Deploymnent创建工作负载，再通过创建Service关联这些工作负载，从而暴露工作负载
+	的接口。因而看上去主体是工作负载，service只是一种访问方式，某些后台执行的负载若不需要被访问，就不用定义service。在Istio中，service是治理的对象，是Istio中的核心管理
+	实体，所以在Istio中，service是一个提供了对外访问能力的执行体，可以将其理解为一个定义了服务的工作负载，没有访问方式的工作负载不是istio的管理对象，k8s的service定义就是
+	istio服务的元数据。
+	
+在Istio的应用场景中，灰度发布是一个重要的场景，即要求一个service有多个不同版本的实现。而k8s在语法上不支持在一个Deployment上定义多个版本，在Istio中多个版本的定义是将一个
+	service关联到多个Deployment，每个Deployment都对应服务的一个版本。
+	
+Istio的ServiceInstance主要包括Endpoint、Service、Labels、AvailabilityZone和ServiceAccount等属性，Endpoint是其中最主要的属性，表示这个实例对应的网络后端(ip:port)，Service
+	表示这个服务实例归属的服务。
+Istio的服务发现基于K8s构建，本章讲到的Istio的service对应k8s的service，Istio的服务实例对应k8s的Endpoint；
+
+k8s提供了一个Endpoints对象，这个Endpoints对象的名称和Service的名称相同，它是一个Pod IP: <targetPort>列表，负责维护service后端pod的变化。
+
+istio-pilot：控制面，服务发现、配置中心，主要是流量管理，如负载均衡、灰度、A/B Test；熔断、超时、重试；并发连接和请求数限制等；
+istio-telemetry：控制面，监控指标、日志、调用链等上报；
+istio-policy：提供服务调用的黑白名单、流量配额等，和pilot的区别是，它的流量策略需要调用第三方服务接口来查询；
+istio-citadel：安全、认证、授权；
+istio-galley：负责对接pilot、mixer的相关配置、校验，第三方服务只需和galey对接配置即可，解耦第三方服务和piloy、mixer；
+istio-sidecar-injector：拦截pod生成side-car；
+istio-proxy：即Envoy，数据面
+istio-ingressgateway：入口
+
+
+Pilot流量治理的流程
+控制面
+	1、管理员通过命令或者API创建流量规则；
+	2、Pilot将流量规则转换为Envoy的标准格式；
+	3、Pilot将规则下发给Envoy；
+数据面
+	1、Envoy拦截Pod上本地容器的Inbound流量和Outbound流量；
+	2、在流量经过Envoy时执行对应的流量规则，对流量进行治理；
+
+Istio断路器CircuitBreaker功能被拆分成连接池管理（ConnectionPoolSettings）和异常点检查（OutlierDetection）；
+连接池管理：
+	在Istio中通过限制某个客户端对目标服务的连接数、访问请求数等，避免对一个服务的过量访问，如果超过配置的阈值，则快速断路请求。还会限制重试次数，避免重试次数过多
+	导致系统压力变大并加剧故障的传播；
+异常点检查
+	如果某个服务实例频繁超时或者出错，则将该实例隔离，避免影响整个服务；
+	
+故障注入
+	在分布式系统中，比较常用的故障注入方法是在网络协议栈中注入对应协议的故障，干预服务的调用，不用修改业务代码；
+	Istio的故障注入就是这样一种机制的实现，但不是在底层网络层破坏数据包，而是在网格中对特定的应用层协议进行故障注入，虽然在网络访问阶段进行注入，但其作用于应用层。
+	
+k8s ingress只能7层负载均衡；
+Istio的Gateway只做4~6层的端口、TLS配置等基本功能，VirtualService则定义7层路由等丰富内容。
+
+外部接入服务治理
+	比如mysql数据库等，是单独部署的，没有托管在k8s集群中，那么k8s集群中怎么通过k8s服务的方式来访问呢？
+	关于这种第三方服务的管理，专门有一种Open Service Broker API来实现第三方软件的服务化，这种API通过定义Catalog、Provisioning、Updating、Binding、Unbinding等
+		标准接口接入服务，在和k8s结合的场景下，使用Service Catalog的扩展机制可以方便地在集群中管理云服务商提供的第三方服务。
+	Istio可以方便地对网格内的服务访问进行治理，那么如何对这种网格外的服务访问进行治理呢？从实际需求上看，对一个数据库访问进行管理，比对两个纯粹的内部服务访问进行
+		管理更重要。在Istio中是通过一个ServiceEntry的资源对象将网格外的服务注册到网格上，然后像对网格内的普通服务一样对网格外的服务访问进行治理。
+	大多数时候，在访问网格外的服务时，通过网格内服务的sidecar就可以执行治理功能，但有时需要有一个专门的Egress Gateway来支持，如上面的例子示。出于对安全或者网络
+		规划的考虑，要求网格内所有外出的流量都必须经过这样一组专用节点，需要定义一个Egress Gateway并分配Egress节点，将所有的出口流量都转发到Gateway上进行管理。
+		
+VirtualService定义了对特定目标服务的一组流量规则。其是一个虚拟服务，将满足条件的流量都转发到对应的服务后端，这个服务后端可以是一个服务，也可以是在DestinationRule
+	中定义的服务的自己。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
