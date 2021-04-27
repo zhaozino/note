@@ -99,6 +99,14 @@ VirtualService定义了对特定目标服务的一组流量规则。其是一个
 	中定义的服务的自己。
 
 
+mix
+1、Handlers
+	适配器封装了 Mixer 与特定的外部基础结构后端例如 Prometheus 或 Stackdriver 交互所需的逻辑。 handler 是负责保存适配器所需的配置状态的资源。例如，一个日志适配器可能需要日志收集后端的 IP 地址和端口。
+2、Instances
+	Instance 配置指定了请求属性到适配器输入的映射。
+3、Rules
+	Rules 指定何时使用特定 instance 调用特定 handler。 考虑一个示例，如果目标服务是 service1 并且 x-user 请求标头具有特定值，您希望把 requestduration 指标传递给 prometheus 处理程序。
+
 
 
 
