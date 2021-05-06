@@ -6,3 +6,433 @@ Kubernetes在创建Service时，根据Service的标签选择器（Label Selector
 Service不仅可以代理Pod，还可以代理任意其他后端，比如运行在Kubernetes外部Mysql、Oracle等。这是通过定义两个同名的service和endPoints来实现的。
 在实际的生产环境使用中，通过分布式存储来实现的磁盘在mysql这种IO密集性应用中，性能问题会显得非常突出。所以在实际应用中，一般不会把mysql这种应用直接放入kubernetes中管理，而是使用专用的服务器来独立部署。而像web这种无状态应用依然会运行在kubernetes当中，这个时候web服务器要连接kubernetes管理之外的数据库，有两种方式：一是直接连接数据库所在物理服务器IP，另一种方式就是借助kubernetes的Endpoints直接将外部服务器映射为kubernetes内部的一个服务。
 简单认为：动态存储pod名字与pod ip对应关系的list，并提供将请求转发到实际pod上的能力
+
+
+master通常独占至少3台机器，保证高可用，master运行着以下关键进程：
+	Kubernetes API Server(kube-apiserver)：提供了HTTP Rest接口的关键服务进程，是Kubernetes里所有资源的增删改查等操作的唯一入口，也是集群控制的入口进程；
+	Kubernetes Controller Manager(kube-controller-manager)：Kubernetes里所有资源对象的自动化控制中心，可以将其理解为资源对象的“大总管”；
+	Kubernetes Scheduler(kube-scheduler)：负责资源调度（Pod调度），相当于公交公司的调度室；
+	另外，在Master上通常还需要部署etcd服务，因为Kubernetes里的所有资源对象的数据都被保存在etcd中。
+
+每个Node上运行着以下关键进程：
+	kubelet: 负责Pod对应的容器的创建、启停等任务，同时与Master密切协作，实现集群管理的基本功能。
+	kube-proxy：实现Kubernetes Service的通信与负载均衡机制的重要组件；
+	Docker Engine(docker)：Docker引擎，负责本机的容器创建和管理工作；
+	Node可以在运行期间动态增加到Kubernetes集群中，前提是在这个节点上已经正确安装、配置和启动了上述关键进程，在默认情况下kubelet会向Master注册自己，这也是k8s推荐的Node管理方式。
+	一旦Node被纳入集群管理范围，kubelet进程就会定时向Master汇报自身的情报，例如操作系统、Docker版本、机器的CPU和内存情况，以及当前有哪些Pod在运行等，这样Master就可以获知每个Node
+	的资源使用情况，并实现高效均衡的资源调度策略。而某个Node在超过指定时间不上报信息时，会被Master判定为“失联”，Node的状态被标记为不可用（Not Ready），随后Master会触发“工作负载大转移”
+	的自动流程。
+	kubectl get nodes
+	
+Replication Controller：用来部署、升级Pod
+Replica Set：下一代的Replication Controller
+Deployment：可以更加方便的管理Pod和Replica Set
+	
+Pod：每个Pod都有一个特殊的被称为“根容器”的Pause容器。Pause容器对应的镜像属于Kubernetes平台的一部分，除了Pause容器，每个Pod还包含一个或多个紧密相关的用户业务容器。
+	Pause容器的状态代表了整个容器组的状态，Pod里的多个业务容器共享Pause容器的IP、Volume。
+	kubectl describe pod xxxx：查看pod的描述信息
+
+endpoint是k8s集群中的一个资源对象，存储在etcd中，用来记录一个service对应的所有pod的访问地址。service配置selector，endpoint controller才会自动创建对应的endpoint对象；否则，不会生成endpoint对象.
+例如，k8s集群中创建一个名为hello的service，就会生成一个同名的endpoint对象，ENDPOINTS就是service关联的pod的ip地址和端口。
+一个 Service 由一组 backend Pod 组成。这些 Pod 通过 endpoints 暴露出来。 Service Selector 将持续评估，结果被 POST 到一个名称为 Service-hello 的 Endpoint 对象上。 当 Pod 终止后，它会自动从 Endpoint 中移除，新的能够匹配上 Service Selector 的 Pod 将自动地被添加到 Endpoint 中。 检查该 Endpoint，注意到 IP 地址与创建的 Pod 是相同的。现在，能够从集群中任意节点上使用 curl 命令请求 hello Service : 。 注意 Service IP 完全是虚拟的，它从来没有走过网络，如果对它如何工作的原理感到好奇，可以阅读更多关于 服务代理 的内容。
+Endpoints是实现实际服务的端点集合。
+Kubernetes在创建Service时，根据Service的标签选择器（Label Selector）来查找Pod，据此创建与Service同名的EndPoints对象。当Pod的地址发生变化时，EndPoints也随之变化。Service接收到请求时，就能通过EndPoints找到请求转发的目标地址。
+Service不仅可以代理Pod，还可以代理任意其他后端，比如运行在Kubernetes外部Mysql、Oracle等。这是通过定义两个同名的service和endPoints来实现的。
+在实际的生产环境使用中，通过分布式存储来实现的磁盘在mysql这种IO密集性应用中，性能问题会显得非常突出。所以在实际应用中，一般不会把mysql这种应用直接放入kubernetes中管理，而是使用专用的服务器来独立部署。而像web这种无状态应用依然会运行在kubernetes当中，这个时候web服务器要连接kubernetes管理之外的数据库，有两种方式：一是直接连接数据库所在物理服务器IP，另一种方式就是借助kubernetes的Endpoints直接将外部服务器映射为kubernetes内部的一个服务。
+简单认为：动态存储pod名字与pod ip对应关系的list，并提供将请求转发到实际pod上的能力
+
+mysql-rc.yaml
+	apiVersion: v1
+	kind: ReplicationController
+	metadata:
+		name: mysql
+	spec:
+		replicas: 1
+		selector:
+			app: mysql
+		template:
+			metadata:
+			labels:
+				app: mysql
+		spec:
+			containers:
+				- name: mysql
+					image: mysql
+			ports:
+				- containerPort: 3306
+			env:
+				- name: MYSQL_ROOT_PASSWORD
+					value: "123456"
+		  
+kubectl create -f mysql-rc.yaml
+kubectl get rc
+kubectl get pods
+
+docker ps |grep mysql
+
+mysql-svc.yaml
+	apiVersion: v1
+	kind: Service
+	metadata:
+		name: mysql
+	spec:
+		ports:
+			- port: 3306
+		selector:
+			app: mysql
+
+kubectl create -f mysql-svc.yaml
+kubectl get svc
+
+ReplicationController
+
+Deployment在k8s 1.2版本中引入的新概念，用于更好地解决Pod的编排问题。为此，Deployment在内部使用了Replica Set来实现目的，无论从Deployment的作用与目的、YAML定义，
+	还是从它的具体命令操作来看，我们都可以把它看做RC的一次升级，两者的相似度超过90%。Deployment相对于RC的一个最大升级是我们可以随时知道当前Pod“部署”的进度。
+	apiVersion: apps/v1
+	kind: Deployment
+	metadata:
+		name: nginx-deployment
+	spec:
+		selector:
+			matchLabels:
+				app: nginx
+		replicas: 2 # tells deployment to run 2 pods matching the template
+		template:
+			metadata:
+				labels:
+					app: nginx
+			spec:
+				containers:
+				- name: nginx
+					image: nginx:1.14.2
+					ports:
+					- containerPort: 80
+
+	kubectl create -f tomcat-deployment.yaml
+	kubectl get deployments
+	
+	kubectl get rs //查看当前的Replica Set
+	
+Horizontal Pod Autoscaler
+	apiVersion: autoscaling/v1
+	kind: HorizontalPodAutoscaler
+	metadata:
+		name: php-apache
+		namespace: default
+	spec:
+		maxReplicas: 10
+		minRelicas: 1
+		scaleTargetRef:
+			kind: Deployment
+			name: php-apache
+		targetCPUUtilizationPercentage: 90
+	//当这些Pod副本的CPUUtilizationPercentage的值超过90%时会触发自动动态扩容行为；在扩容或缩容时必须满足的一个约束条件是Pod的副本数为1~10.
+
+	除了yaml创建HPA，还可以通过下面的简单命令创建：
+	kubectl autoscale deployment php-apache --cpu-percent=90 --min=1 --max=10
+	
+StatefulSet
+	在k8s系统中，Pod的管理对象ReplicationController、Deployment、DaemonSet和Job都面向无状态的服务。但现实中有很多有状态的服务，比如Mysql集群、mongoDB集群、Zookeeper集群、kafka集群等，
+	这些应用有4个共同点：
+	1、每个节点都有固定的身份ID，通过这个ID，集群中的成员可以相互发现并通信。
+	2、集群的规模是比较固定的，集群规模不能随意变动。
+	3、集群中每个节点都是有状态的，通常会持久化数据到永久存储中。
+	4、如果磁盘损坏，则集群里的某个节点无法正常运行，集群功能受损。
+	
+	PetSet首次在K8S1.4版本中，在1.5更名为StatefulSet。除了改了名字之外，这一API对象并没有太大变化。
+	PetSet是Deployment/RC的一种特殊变种，它有如下特性：
+	1、StatefulSet里的每个Pod都有稳定、唯一的网络标识，可以用来发现集群内的其他成员。假设StatefulSet的名称为kafka，那么第一个Pod叫kafka-0，第二个叫kafka-1，以此类推。
+	2、StatefulSet控制的Pod副本的启停顺序是受控的，操作第n个Pod时，前n-1个Pod已经是运行且准备好的状态。
+	3、Stateful里的Pod采用稳定的持久化存储卷，通过PV或PVC来实现，删除Pod时默认不会删除与StatefulSet相关的存储卷（为了保证数据的安全）。
+	StatefulSet除了要与PV卷绑定使用以存储Pod的状态数据，还要与Headless Service配合使用，即在每个StatefulSet定义中都要声明它属于哪个Headless Service，Headless Service与
+	普通Service的关键区别在于，它没有Cluster IP，如果解析Headless Service的DNS域名，则返回的是该Service对应的全部Pod的Endpoint列表。StatefulSet在Headless Service的肌醇上
+	又为StatefulSet控制的每个Pod实例都创建了一个DNS域名，这个域名的格式为：
+	$(podname).$(headless service name)
+
+kubectl get endpoints
+kubectl get svc tomcat-service -o yaml
+
+Job：批处理任务，Job也控制一组Pod容器，是一种特殊的Pod副本自动控制器，
+
+Volume：k8s的Volume概念、用户和目的与Docker的Volume比较类似，但两者不能等价。
+	2、k8s中的Volume被定义在Pod上，然后被一个Pod里的多个容器挂载到具体的文件目录下；
+	1、k8s中的Volume与Pod的生命周期相同，但与容器的生命周期不相关，当容器终止或者重启时，Volume中的数据也不会丢失。
+	
+	apiVersion: v1
+	kind: Pod
+	metadata:
+		labels:
+			name: test-emptypath
+			role: master
+		name: test-emptypath
+	spec:
+		volumes:
+		- name: log-storage
+			emptyDir: {}
+		containers:
+			- name: test-emptypath
+				image: registry:5000/back_demon:1.0
+				volumeMounts:
+				 - name: log-storage
+					 mountPath: /home/laizy/test/
+				command:
+				- /run.sh
+		
+	Volume类型
+	enptyDir：在Pod分配到Node时创建的。初始内容为空，无需指定宿主机上对应的目录文件，因为这是k8s自动分配的一个目录，当Pod从Node上移除时，emptyDir中的数据也会被
+		永久删除。用作临时空间、CheckPoint等；
+	hostPath：在Pod上挂载宿主机上的文件或目录；
+
+Persistent Volume
+	Volume被定义在Pod上的，属于计算资源的一部分，而实际上，网络存储是相对独立于计算资源而存在的一种实体资源。
+	Persistent Volume(PV)和与之相关联的Persistent Volume Claim(PVC)也起到了类似的作用。
+	pv属于集群级别资源  不属于任何名称空间 定义的时候不能指定名称空间，用户在创建pod的时候同时创建与pv一一对应的pvc资源；
+	PVC可以理解为持久化存储的 它提供了对某种持久化存储的描述,但不提供具体的实现，持久化存储的实现部分则由PV负责完成；
+	PVC如何与特定PV进行绑定？其实就是将这个PV对象的名字,填在PVC对象的spec.volumeName字段上即可；
+	Persistent Volume和Persistent Volume Claim类似Pods和Nodes的关系，创建Pods需要消耗一定的Nodes的资源。而Persistent Volume则是提供了各种存储资源，
+	而Persistent Volume Claim提出需要的存储标准，然后从现有存储资源中匹配或者动态建立新的资源，最后将两者进行绑定。
+	PersistentVolumeClaim（PVC）是由用户进行存储的请求，一种对存储资源的声明。 
+	有了PersistentVolumeClaim，用户只需要告诉Kubernetes需要什么样的存储资源，而不必关心真正的空间从哪里分配，如何访问等底层细节信息。这些Storage Provider的底层信息交给管理员来处理，只有管理员才应该关心创建PersistentVolume的细节信息。
+
+	apiVersion: v1
+	kind: PersistentVolume
+	metadata:
+		name: pv001
+		labels:
+			name: pv001
+	spec:
+		nfs:
+		 path: /data/volumes/v1
+		 server: 192.168.11.158
+		accessModes: ["ReadWriteMany","ReadWriteOnce"]
+		capacity:
+			storage: 20Gi
+	---
+	apiVersion: v1
+	kind: PersistentVolumeClaim
+	metadata:
+		name: mypvc
+		namespace: default
+	spec:
+		accessModes: ["ReadWriteMany"]
+		resources:
+			requests:
+				storage: 4Gi
+	---
+	apiVersion: v1
+	kind: Pod
+	metadata:
+		name: pod-vol-pvc
+		namespace: default
+	spec:
+		containers:
+		- name: myapp
+			image: ikubernetes/myapp:v1
+			volumeMounts:
+			- name: html
+				mountPath: /usr/share/nginx/html
+		volumes:
+		- name: html
+			persistentVolumeClaim:
+				claimName: mypvc
+
+namespace
+	kubectl get namespaces
+	
+	apiVersion: v1
+	kind: Namespace
+	metadata:
+		name: development
+		
+	kubectl get pods --namespace=development
+	
+ConfigMap: 存储在etcd中；
+
+CRI：Container Runtime Interface
+	
+静态Pod
+	由kubelet进行管理的仅存在于特定Node上的Pod。它们不能通过API Server进行管理，无法与ReplicationController、Deployment或者DaemonSet进行关联，并且kubelet无法对它们进行
+	健康检查。静态Pod总是由kubelet创建的，并且总在kubelet所在的Node上运行。由于静态Pod只受所在节点的kubelet控制，可以有效预防通过kubectl、或管理工具操作的误删除，
+	可以用来部署核心组件应用。保障应用服务总是运行稳定数量和提供稳定服务。
+
+kubectl exec -it podName -c containerName -- shellCommand //执行容器命令
+
+ConfigMap的典型用法
+	1、生成为容器内的环境变量；
+	2、设置容器启动命令的启动参数（需设置为环境变量）；
+	3、以Volume的形式挂载为容器内部的文件或目录；
+	
+	创建ConfigMap
+	1、通过yaml创建ConfigMap
+	cm-appvars.yaml
+		apiVersion: v1
+		kind: ConfigMap
+		metadata:
+			name: cm-appvars
+		data:
+			apploglevel: info
+			appdatadir: /var/data
+	
+	cm-appconfigfiles.yaml
+		apiVersion: v1
+		kind: ConfigMap
+		metadata:
+			name: cm-appconfigfiles
+		data:
+			key-serverxml: |
+				<?xml version='1.0' encoding='utf-8'?>
+				....
+			key-loggingproperties: "a=1\r\n\r\nb=2\r\n\r\n"
+	
+	kubectl create -f cm-appvars.yaml
+	kubectl get configmap
+	kubectl describe configmap cm-appvars
+	kubectl get configmap cm-appvars -o yaml
+
+	2、通过kubectl命令行创建ConfigMap
+	kubectl create configmap NAME --from-file=[key=]source --from-file=[key=]source //key是configMap的key，source指定文件，默认文件名为key
+	kubectl create configmap Name --from-file=config-files-dir //config-files-dir指定目录，目录下的文件名被设置为key，文件的内容被设置为value
+	kubectl create configmap NAME --from-literal=key1=value1 --from-literal=key2=value2
+
+	configMap的使用
+	1、环境变量引用
+	apiVersion: v1
+	kind: Pod
+	...
+		env:
+		- name: APPLOGLEVEL #定义环境变量的名称
+			valueFrom:
+				configMapKeyRef:
+					name: cm-appvars #环境变量的值取自cm-appvars configMap
+					key: apploglevel #key为apploglevel
+		...
+		
+	kubectl get pods --show-all
+	kubectl logs podName
+	
+	...
+		envFrom:
+		- configMapRef:
+				name: cm-appvars #根据cm-appvars中的key=value自动生成环境变量
+				
+	2、通过volumeMount使用ConfigMap：把configMap下的文件挂载到volumeMount路径下；
+	
+Downward API：在容器内获取Pod信息；以下两种方式可以将Pod信息注入容器内部；
+	1、环境变量：用于单个变量，可以将Pod信息和Container信息注入容器内部；
+	2、Volume挂载：将数组类信息生成为文件并挂载到容器内部；
+	
+Pod的生命周期和重启策略
+	Pending：API Server已经创建该Pod，但在Pod内还有一个或多个容器的镜像没有创建，包括正在下载镜像的过程；
+	Running：Pod内所有容器均已创建，且至少有一个容器处于运行状态、正在启动状态或正在重启状态；
+	Successed：Pod内所有容器均成功执行后退出，且不会再重启；
+	Failed：Pod内所有容器均已退出，但至少有一个容器退出为失败状态；
+	Unknown：由于某种原因无法获取该Pod的状态，可能由于网络不畅通导致；
+
+	当某个容器异常退出或健康检查失败时，kebelet将根据RestartPolicy的设置来进行相应的操作；
+	
+Pod健康检查和服务可用性检查
+	k8s对Pod的健康状态可以通过两类探针来检查；LivenessProbe和ReadinessProbe，kubelet定期执行这两类探针来诊断容器的健康状况。
+	1、LivenessProbe探针：用于判断容器是否存活（Running状态），如果一个容器不包含LivenessProbe探针，那么kubelet认为该容器的LivenessProbe探针返回的值永远是Success。
+	2、ReadinessProbe探针：用于判断容器服务是否可用（Ready状态）；
+	以上两种探针均可配置以下三种实现方式：
+	1、ExecAction：在容器内部执行一个命令，如果该命令返回码为0，则健康；
+	2、TCPSocketAction：通过IP+port执行TCP检查；
+	3、HTTPGetAction：状态码为200；
+	
+Pod调度
+	在k8s平台上，我们很少会直接创建一个Pod，在大多数情况下会通过RC、Deployment、DaemonSet、Job等控制器完成对一组Pod副本的创建、调度及全生命周期的自动控制任务。
+	
+	把mysql调度到SSD的Node上，方法：
+	1、在SSD的Node上打上标签：“disk=ssd”；
+	2、在Pod模板中设定NodeSelector的值为“disk:ssd”；
+	
+	Pod之间的亲和性（Affinity）：比如MySql和Redis不能被调度到同一个目标节点上，或者两种不同的Pod必须被调度到同一个Node上，以实现本地文件共享或本地网络通信等特殊需求。
+	
+	kubectl get rs
+	kubectl get pods -o wide
+	
+	1、NodeSelector：定向调度
+		1、kubectl label nodes <node-name> <label-key>=<label-value> //给node打上标签
+		2、在Pod的定义中加上nodeSelector的设置：
+			nodeSelector:
+				zone: north
+	2、NodeAffinity：节点亲和性调度策略，随着亲和性表达式越发强大，最终NodeSelector会被废弃；
+		1、必须满足条件；
+		2、优先满足，并不强制；
+		3、等；
+	3、PodAffinity：Pod亲和、互斥性调度策略；
+		新建的Pod与某个标签的Pod在一个Node上，或不在一个Node上；
+	4、Taint配合Toleration使用，让Pod避开那些不合适的Node；在Node上设置一个或多个Taint之后，除非Pod明确声明能够容忍这些污点，否则无法在这些Node上运行。
+		Toleration是Pod的属性，让Pod能够运行在标注了Taint的Node上。
+		kubectl taint nodes nodeName key=value:NoSchedule //为node设置Taint信息；除非Pod声明可以容忍这个Taint，否则就不会被调度到node1上。
+		
+DaemonSet：在每个Node上都调度一个Pod，即运行一份Pod的副本实例；
+	例如：在每个Node上都运行一个日志采集程序，logstash等；
+
+Job：批处理调度
+	1、Job Template Expansion模式：一个Job对象对应一个待处理的Work item，有几个Work item就产生几个独立的Job，通常适合Work item数量少、每个Work item要处理的数据量比较大的场景。
+	2、Queue with Pod Per Work Item模式：采用一个任务队列存放Work item，一个Job对象作为消费者去完成这些Work item，在这种模式下，Job会启动N个Pod，每个Pod都对应一个Work item；
+	3、Queue with Variable Pod Count模式：也是采用任务队列存放work item，一个Job对象作为消费者去完成这些Work item，但与上面的模式不同，Job启动的Pod数量是可变的；
+	
+	1、Non-parallel Jobs：通常一个Job只启动一个Pod，除非Pod异常，才会重启该Pod，一旦Pod正常结束，Job将结束；
+	2、Parallel Jobs with a fixed completion count
+		并行job会启动多个Pod，此时需要设定job的.spec.completions参数为一个正数，当正常结束的Pod数量达至此参数设定的值后，job结束。此外，job的.spec.parallelism参数用来
+		控制并行度，即同时启动几个Job来处理Work item；
+	3、Parallel Jobs with a work queue
+		任务队列方式的并行Job需要一个独立的Queue，work item都在一个Queue中存放，不能设置Job的.spec.completions参数，此时Job有以下特性
+			1、每个Pod都能独立判断和决定是否还有任务项需要处理。
+			2、如果某个Pod正常结束，则Job不会再启动新的Pod。
+			3、如果一个Pod成功结束，则此时应该不存在其他Pod还在工作的情况，它们应该都处于即将结束、退出的状态；
+			4、如果所有Pod都结束了，且至少一个Pod成功结束，则整个Job成功结束。
+			
+Cronjob：定时任务
+	docker logs containerId
+	kubectl get jobs --watch
+	kubectl delete cronjob hello
+	
+Init Container：与应用容器在本质上是一样的，但他们是仅运行一次就结束的任务，并且必须在成功执行完成后，系统才能继续执行下个容器。
+	
+Pod升级和滚动
+	kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1
+	或kubectl edit deployment/nginx-deployment，修改文本保存；
+	
+	kubectl rollout status
+	kubectl describe pod/nginx-deployment-359954325432
+	
+	kubectl get rs //查看ReplicaSet
+	
+	kubectl rollout history deployment/nginx-deployment //检查这个deployment部署的历史记录；
+	在创建Deployment时使用--record参数，就可以在CHANGE-CAUSE列看到每个版本使用的命令了。
+	
+	kubectl rollout history deployment/nginx-deployment --revision=3 //查看特定版本信息
+	
+	kubectl rollout undo deployment/nginx-deployment //撤销本次发布并回滚到上一个部署版本
+	kubectl rollout undo deployment/nginx-deployment --to-revision=2 //回滚到特定版本
+	
+	kubectl rollout pause deployment/nginx-deployment //暂停deployment的更新操作
+	kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1 //修改版本号
+	kubectl rollout resume deployment nginx-deployment //恢复deployment的部署更新操作
+	
+	kubectl rollout status deploy nginx-test //查看发布过程
+	
+Pod的扩缩容
+	kubectl scale deployment nginx-deployment --replicas 5 //手动扩缩容
+	
+Horizontal Pod Autoscaler(HPA)
+	HPA控制器基于Master的kube-controller-manager服务启动参数--horizontal-pod-autoscaler-sync-period定义的探测周期（默认值为15s），周期性地检测目标Pod的资源性能指标，
+	并与HPA资源对象中的扩缩容条件进行对比，在满足条件时对Pod副本数量进行调整。通过对比监控指标，底层执行scale操作；
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
