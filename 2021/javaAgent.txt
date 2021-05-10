@@ -1,0 +1,102 @@
+从java5开始，jdk中新增了一个java.lang.instrument.Instrumentation 类，它提供在运行时重新加载某个类的的class文件的api。通过操作Instrumentation的api就可以实现不重启服务对单个类进行简单的修改。
+
+java instrument在很多应用领域都发挥着重要的作用，比如：
+
+apm：(Application Performance Management)应用性能管理。pinpoint、cat、skywalking等都基于Instrumentation实现
+idea的HotSwap、Jrebel等热部署工具
+应用级故障演练
+Java诊断工具Arthas、Btrace等
+
+java agent分为两种，一种在主程序之前运行的Agent：premain，一种是在主程序之后运行的Agent（jdk1.6以后提供）：agentmain。
+
+一、在主程序运行之前的代理程序
+
+package agent;
+import java.lang.instrument.Instrumentation;
+public class TestAgent{
+    public static void premain(String agentArgs, Instrumentation inst){
+        System.out.println("java agent doing");
+    }
+}
+编写MANIFEST.MF：maven项目可以放到src/main/resources/META-INF目录下：
+
+Manifest-Version: 1.0
+Premain-Class: agent.TestAgent
+pom.xml中添加构建插件：
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <addClasspath>true</addClasspath>
+            </manifest>
+            <manifestEntries>
+              <Premain-Class>
+                agent.TestAgent
+              </Premain-Class>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+新建一个测试项目，在VM options添加启动参数：
+
+-javaagent:agent路径/TestAgent.jar
+运行测试项目，可以在控制台看到"java agent doing"输出。
+
+二、在主程序运行之后的代理程序
+
+在主程序运行之前的agent模式有一些缺陷，例如需要在主程序运行前就指定javaagent参数，premain方法中代码出现异常会导致主程序启动失败等，为了解决这些问题，JDK1.6以后提供了在程序运行之后改变程序的能力。它的实现步骤和之前的模式类似。
+
+package agent;
+import java.lang.instrument.Instrumentation;
+public class TestAgent{
+    public static void agentmain(String agentArgs, Instrumentation inst){
+        System.out.println("agentmain doing");
+    }
+}
+编写MANIFEST.MF：maven项目可以放到src/main/resources/META-INF目录下：
+
+Manifest-Version: 1.0
+Premain-Class: agent.TestAgent
+pom.xml中添加构建插件：
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <addClasspath>true</addClasspath>
+            </manifest>
+            <manifestEntries>
+              <Agent-Class>
+                agent.TestAgent
+              </Agent-Class>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+启动主程序（假设是一个tomcat应用），编写加载agent类的程序
+
+在程序运行后加载，我们不可能在主程序中编写加载的代码，只能另写程序，那么另写程序如何与主程序进行通信？这里用到的机制就是attach机制，它可以将JVM A连接至JVM B，并发送指令给JVM B执行，JDK自带常用工具如jstack，jps等就是使用该机制来实现的。这里我们先用tomcat启动一个程序用作主程序B，再来写A程序代码。
+
+public static void main(String[] args){
+    try{
+        String pid = "78256";
+        VirtualMachine vm = VirtualMachine.attach(pid);
+        vm.loadAgent("agent路径/TestAgent.jar")
+    }catch(Exception e){
+        e.printStackTrace();
+    }
+}
+然后在tomcat应用控制台即可看到"agentmain doing"。
