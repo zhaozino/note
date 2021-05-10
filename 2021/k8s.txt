@@ -392,7 +392,7 @@ Pod升级和滚动
 	
 	kubectl get rs //查看ReplicaSet
 	
-	kubectl rollout history deployment/nginx-deployment //检查这个deployment部署的历史记录；
+	kubectl rollout history deployment/nginx-deployment //检查这个deployment部署的历史记录；开完电动车不愿意开燃油车
 	在创建Deployment时使用--record参数，就可以在CHANGE-CAUSE列看到每个版本使用的命令了。
 	
 	kubectl rollout history deployment/nginx-deployment --revision=3 //查看特定版本信息
@@ -412,6 +412,215 @@ Pod的扩缩容
 Horizontal Pod Autoscaler(HPA)
 	HPA控制器基于Master的kube-controller-manager服务启动参数--horizontal-pod-autoscaler-sync-period定义的探测周期（默认值为15s），周期性地检测目标Pod的资源性能指标，
 	并与HPA资源对象中的扩缩容条件进行对比，在满足条件时对Pod副本数量进行调整。通过对比监控指标，底层执行scale操作；
+
+
+service
+	当spec.type是LoadBalancer，使用外接负载均衡器完成到服务的负载分发，需要在spec.status.loadBalancer字段指定外部负载均衡器的IP地址，并同时定义nodePort和clusterIP，
+	用于公有云环境。
+	
+	kubectl expose rc webapp //快速创建service，service所需端口从Pod中的containerPort复制而来；
+	kubectl get svc //查看service
+	
+	目前k8s提供了两种负载均衡分发策略：RoundRobin(轮询，默认)、SessionAffinity（基于客户端IP进行会话保持）；
+	
+	外部服务：可以定义一个没有selector的service，这样service就不知道分发请求到哪里了；然后再创建一个和该service同名的Endpoint，指向实际的后端访问地址；
+	kind: Endpoints
+	apiVersion: v1
+	metadata:
+		name: my-service
+	subsets:
+	- addresses:
+		- IP: 1.2.3.4
+		ports:
+		- port: 80
+		
+	Headless Service
+	在某些场景中，开发人员希望自己控制负载均衡的策略，不使用Service提供的默认负载均衡的功能，或者应用程序希望知道属于同组服务的其他实例。k8s提供了Headless Service
+	来实现这种功能，即不为Service设置ClusterIP（入口IP地址），仅通过Label Selector将后端的Pod列表返回给调用的客户端。
+	apiVersion: v1
+	kind: Service
+	metadata:
+		name: nginx
+		labels:
+			app: nginx
+	spec:
+		ports:
+		- port: 80
+		clusterIP: None //Headless Service
+		selector:
+			app: nginx
+	这样，Service将不再具有一个特定的ClusterIP地址，对其进行访问将获得包含Label“app=nginx”的全部Pod列表，然后客户端程序自行决定如何处理这个Pod列表。例如，StatefulSet
+	就是使用Headless Service为客户端返回多个服务地址的。
+
+	Ingress
+	Ingress将客户端请求直接转发到Service对应的后端Endpoint(Pod)上，这样会跳过kebe-proxy的转发功能，kube-proxy不再起作用。如果Ingress Controller提供的是对外服务，则实际上
+	实现的是边缘路由器的功能；
+	正常情况下，一个k8s集群一个ingress-controller、ingress，它们俩默认关联，但可以建多个ingress-controller、ingress，并通过ingress-class属性来建立关联关系；
+	
+k8s api server
+	k8s api server的核心功能是提供k8s各类资源对象（如Pod、RC、Service等）的增删改查及watch等HTTP Rest接口，是集群管理的API入口；是资源配额控制的入口；提供了完备的集群安全机制；
+	api server是k8s集群数据的唯一访问入口；
+	通过一个名为kube-apiserver的进程提供服务，该服务运行在Master上。我们通常通过kubectl来与k8s api server交互；
+	curl localhost:8080/api/v1 //查看k8s api server目前支持的资源对象类型
+	curl localhost:8080/api/v1/pods
+	curl localhost:8080/api/v1/services
+	curl localhost:8080/api/v1/replicationcontrollers
+
+	k8s api server本身也是一个Service，名称就是kubernetes
+
+	LimitManager：Pod、Container
+	ResourceQuota：Namespace
+
+kubelet
+	在k8s集群中，在每个Node上都会启动一个kubelet服务进程，该进程用于处理Master下发到本节点的任务，管理Pod及Pod中的容器。每个kubelet进程都会在API Server上注册节点自身的
+	信息，定期向Master汇报节点资源的使用情况，并通过cAdvisor监控容器和节点资源；
+
+kube-proxy
+	在k8s集群的每个Node上都会运行一个kube-proxy服务进程，其核心功能是将到某个Service的访问请求转发到后端的多个Pod实例上。Service的cluster IP与NodePort等概念是kube-proxy
+	服务通过iptables的NAT转换实现的，kube-proxy在运行过程中动态创建与Service相关的iptables规则；
+	
+	kube-proxy的三种工作模式
+	1、userspace模式
+		该模式下kube-proxy会为每一个Service创建一个监听端口。发向Cluster IP的请求被Iptables规则重定向到Kube-proxy监听的端口上，Kube-proxy根据LB算法选择
+		一个提供服务的Pod并和其建立链接，以将请求转发到Pod上。该模式下，Kube-proxy充当了一个四层Load balancer的角色。由于kube-proxy运行在userspace中，
+		在进行转发处理时会增加两次内核和用户空间之间的数据拷贝，效率较另外两种模式低一些；好处是当后端的Pod不可用时，kube-proxy可以重试其他Pod。
+	2、iptables 模式
+		为了避免增加内核和用户空间的数据拷贝操作，提高转发效率，Kube-proxy提供了iptables模式。在该模式下，Kube-proxy为service后端的每个Pod创建对应的iptables规则，
+		直接将发向Cluster IP的请求重定向到一个Pod IP。该模式下Kube-proxy不承担四层代理的角色，只负责创建iptables规则。该模式的优点是较userspace模式效率更高，
+		但不能提供灵活的LB策略，当后端Pod不可用时也无法进行重试。
+	3、ipvs 模式
+		该模式和iptables类似，kube-proxy监控Pod的变化并创建相应的ipvs rules。ipvs也是在kernel模式下通过netfilter实现的，但采用了hash table来存储规则，
+		因此在规则较多的情况下，Ipvs相对iptables转发效率更高。除此以外，ipvs支持更多的LB算法。如果要设置kube-proxy为ipvs模式，必须在操作系统中安装IPVS内核模块。
+		ipvs支持健康检查和重试等功能；可动态修改ipset的集合，即使iptables的规则正在使用这个集合；
+		由于IPVS无法提供包过滤、airpin-masquerade tricks（地址伪装）、SNAT等功能，因此在某些场景（如NodePort的实现）下还要与iptables搭配使用。
+
+Ingress的部署模式
+	1、Deployment + LoadBalancer模式的Service
+		如果要把ingress部署在公有云，那用这种方式比较合适。用Deployment部署ingress-controller，创建一个type为LoadBalancer的service关联这组pod。大部分公有云，
+		都会为LoadBalancer的service自动创建一个负载均衡器，通常还绑定了公网地址。只要把域名解析指向该地址，就实现了集群服务的对外暴露。
+	
+	2、Deployment+NodePort模式的Service
+		同样用deployment模式部署ingress-controller，并创建对应的服务，但是type为NodePort。这样，ingress就会暴露在集群节点ip的特定端口上。由于nodeport暴露的端口是随机端口，
+		一般会在前面再搭建一套负载均衡器来转发请求。该方式一般用于宿主机是相对固定的环境ip地址不变的场景。NodePort方式暴露ingress虽然简单方便，但是NodePort多了一层NAT，
+		在请求量级很大时可能对性能会有一定影响。
+	
+	3、DaemonSet+HostNetwork+nodeSelector
+		用DaemonSet结合nodeselector来部署ingress-controller到特定的node上，然后使用HostNetwork直接把该pod与宿主机node的网络打通，直接使用宿主机的80/433端口就能访问服务。
+		这时，ingress-controller所在的node机器就很类似传统架构的边缘节点，比如机房入口的nginx服务器。该方式整个请求链路最简单，性能相对NodePort模式更好。
+		缺点是由于直接利用宿主机节点的网络和端口，一个node只能部署一个ingress-controller pod。比较适合大并发的生产环境使用。
+	
+Service Account也是一种账号，但它并不是给k8s集群的用户用的，而是给运行在Pod里的进程用的，它为Pod里的进程提供了必要的身份证明。Pod中的客户端调用Kubenertes API时，
+	在HTTP Header中传递中传递了一个Token字符串，内容来自Pod里指定路径下的一个文件，是动态生成的jwt Secret;
+	kubectl describe serviceaccounts
+	
+Secret私密凭据
+	Secret主要用来保管私密数据，比如密码、OAuth Tokens、SSH Keys等信息。
+	Secret从属于Service Account资源对象，一个Service Account对象里面可以包括多个不同的Secret对象，分别用于不同目的的认证活动。
+	
+	secret.yaml
+	apiVersion: v1
+	kind: Secret
+	metadata:
+		name: mysecret
+	type: Opaque
+	data: //必须为BASE64编码值
+		password: dfsafdsaf
+		username: fdsafdsa
+	
+	kubectl create -f secrets.yaml
+	
+	一旦Secret被创建，可以通过下面三种方式使用它：
+	1、在创建Pod时，通过为Pod指定Service Account来自动使用该Secret。
+	2、通过挂载该Secret到Pod来使用它。
+	3、在Docker镜像下载时使用，通过指定Pod的spc.ImagePullSecrets来引用它。
+	
+共享存储原理
+	PersistentVolume(PV)、PersistentVolumeClaim(PVC)
+	PV是对底层网络共享存储的抽象；PVC则是用户对存储资源的一个“申请”，就像Pod消费Node资源一样，PVC能够消费PV资源。PVC可以申请特定的存储空间和访问模式。
+	StorageClass用于标记存储资源的特性和性能。
+	PV、PVC一一对应。多个Pod可以挂载同一个PVC。
+	
+	apiVersion: v1
+	kind: PersistentVolume
+	metadata:
+		name: pv1
+	spec:
+		capacity:
+			storage: 5Gi
+		accessModes:
+			- ReadWriteOnce
+		persistentVolumeReclaimPolicy: Recycle
+		storageClassName: slow
+		nfs:
+			path: /tmp
+			server: 172.17.0.2
+
+	kind: PersistentVolumeClaim
+	apiVersion: v1
+	metadata:
+		name: myclaim
+	spec:
+		accessModes:
+			- ReadWriteOnce
+		resources:
+			requests:
+				storage: 8Gi
+		storageClassName: slow
+		selector: //PV的选择条件
+			matchLabels:
+				release: "stable"
+			matchExpressions:
+				- {key: environment, operator: In, values: [dev]}
+
+	StorageClass作为对存储资源的抽象定义，对用户设置的PVC申请屏蔽后端存储的细节，一方面减少了用户对于存储资源细节的关注，另一方面减轻了管理员手工管理PV的工作，由系统自动
+	完成PV的创建和绑定，实现了动态的资源供应。一旦被创建出来，则将无法修改。
+	kind: StorageClass
+	apiVersion: storage.k8s.io/v1
+	metadata:
+		name: standard
+	provisioner: kubernetes.io/aws-ebs
+	parameters:
+		type: gp2
+
+	通过PVC中的storageClassName，可以自动生成PV；k8s推荐方式；
+	
+	kubectl get pvc/pv
+	
+	pod绑定PVC
+	...
+		volumeMounts:
+		- name: gluster-volume
+			mountPath: "/pv-data"
+			readOnly: false
+	volumes:
+	- name: gluster-volume
+		persistentVolumeClaim: //PVC
+			claimName: pvc-gluster-heketi
+			
+Container Storage Interface(CSI)：用于在k8s和外部存储系统之间建立一套标准的存储管理接口，通过该接口为容器提供存储服务。
+	
+	GA：稳定版本；
+	Beta：预发布版本；
+	Alpha：实验性的版本；
+
+Namespace
+	apiVersion: v1
+	kind: Namespace
+	metadata:
+		name: production
+		
+	kubectl get namespaces
+	
+Trouble Shooting
+	kubectl describe pod ${podName} --namespace=kube-system
+	
+	kubectl logs ${pod_name} //查看容器内部应用程序生成的日志。-c ${containerName} //如果有多个容器，需指定容器名。
+	
+
+
+
+
+
 
 
 
