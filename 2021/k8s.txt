@@ -25,7 +25,10 @@ Pod：每个Pod都有一个特殊的被称为“根容器”的Pause容器。Pau
 
 endpoint是k8s集群中的一个资源对象，存储在etcd中，用来记录一个service对应的所有pod的访问地址。service配置selector，endpoint controller才会自动创建对应的endpoint对象；否则，不会生成endpoint对象.
 例如，k8s集群中创建一个名为hello的service，就会生成一个同名的endpoint对象，ENDPOINTS就是service关联的pod的ip地址和端口。
-一个 Service 由一组 backend Pod 组成。这些 Pod 通过 endpoints 暴露出来。 Service Selector 将持续评估，结果被 POST 到一个名称为 Service-hello 的 Endpoint 对象上。 当 Pod 终止后，它会自动从 Endpoint 中移除，新的能够匹配上 Service Selector 的 Pod 将自动地被添加到 Endpoint 中。 检查该 Endpoint，注意到 IP 地址与创建的 Pod 是相同的。现在，能够从集群中任意节点上使用 curl 命令请求 hello Service : 。 注意 Service IP 完全是虚拟的，它从来没有走过网络，如果对它如何工作的原理感到好奇，可以阅读更多关于 服务代理 的内容。
+一个 Service 由一组 backend Pod 组成。这些 Pod 通过 endpoints 暴露出来。 Service Selector 将持续评估，结果被 POST 到一个名称为 Service-hello 的 Endpoint 对象上。 
+当 Pod 终止后，它会自动从 Endpoint 中移除，新的能够匹配上 Service Selector 的 Pod 将自动地被添加到 Endpoint 中。 检查该 Endpoint，注意到 IP 地址与创建的 Pod 是相同的。
+现在，能够从集群中任意节点上使用 curl 命令请求 hello Service : 。 注意 Service IP 完全是虚拟的，它从来没有走过网络，如果对它如何工作的原理感到好奇，
+可以阅读更多关于服务代理的内容。
 Endpoints是实现实际服务的端点集合。
 Kubernetes在创建Service时，根据Service的标签选择器（Label Selector）来查找Pod，据此创建与Service同名的EndPoints对象。当Pod的地址发生变化时，EndPoints也随之变化。Service接收到请求时，就能通过EndPoints找到请求转发的目标地址。
 Service不仅可以代理Pod，还可以代理任意其他后端，比如运行在Kubernetes外部Mysql、Oracle等。这是通过定义两个同名的service和endPoints来实现的。
@@ -136,7 +139,7 @@ StatefulSet
 	2、StatefulSet控制的Pod副本的启停顺序是受控的，操作第n个Pod时，前n-1个Pod已经是运行且准备好的状态。
 	3、Stateful里的Pod采用稳定的持久化存储卷，通过PV或PVC来实现，删除Pod时默认不会删除与StatefulSet相关的存储卷（为了保证数据的安全）。
 	StatefulSet除了要与PV卷绑定使用以存储Pod的状态数据，还要与Headless Service配合使用，即在每个StatefulSet定义中都要声明它属于哪个Headless Service，Headless Service与
-	普通Service的关键区别在于，它没有Cluster IP，如果解析Headless Service的DNS域名，则返回的是该Service对应的全部Pod的Endpoint列表。StatefulSet在Headless Service的肌醇上
+	普通Service的关键区别在于，它没有Cluster IP，如果解析Headless Service的DNS域名，则返回的是该Service对应的全部Pod的Endpoint列表。StatefulSet在Headless Service的基础上
 	又为StatefulSet控制的每个Pod实例都创建了一个DNS域名，这个域名的格式为：
 	$(podname).$(headless service name)
 
@@ -183,7 +186,8 @@ Persistent Volume
 	Persistent Volume和Persistent Volume Claim类似Pods和Nodes的关系，创建Pods需要消耗一定的Nodes的资源。而Persistent Volume则是提供了各种存储资源，
 	而Persistent Volume Claim提出需要的存储标准，然后从现有存储资源中匹配或者动态建立新的资源，最后将两者进行绑定。
 	PersistentVolumeClaim（PVC）是由用户进行存储的请求，一种对存储资源的声明。 
-	有了PersistentVolumeClaim，用户只需要告诉Kubernetes需要什么样的存储资源，而不必关心真正的空间从哪里分配，如何访问等底层细节信息。这些Storage Provider的底层信息交给管理员来处理，只有管理员才应该关心创建PersistentVolume的细节信息。
+	有了PersistentVolumeClaim，用户只需要告诉Kubernetes需要什么样的存储资源，而不必关心真正的空间从哪里分配，如何访问等底层细节信息。
+	这些Storage Provider的底层信息交给管理员来处理，只有管理员才应该关心创建PersistentVolume的细节信息。
 
 	apiVersion: v1
 	kind: PersistentVolume
@@ -392,7 +396,7 @@ Pod升级和滚动
 	
 	kubectl get rs //查看ReplicaSet
 	
-	kubectl rollout history deployment/nginx-deployment //检查这个deployment部署的历史记录；开完电动车不愿意开燃油车
+	kubectl rollout history deployment/nginx-deployment //检查这个deployment部署的历史记录；
 	在创建Deployment时使用--record参数，就可以在CHANGE-CAUSE列看到每个版本使用的命令了。
 	
 	kubectl rollout history deployment/nginx-deployment --revision=3 //查看特定版本信息
@@ -498,6 +502,7 @@ Ingress的部署模式
 	1、Deployment + LoadBalancer模式的Service
 		如果要把ingress部署在公有云，那用这种方式比较合适。用Deployment部署ingress-controller，创建一个type为LoadBalancer的service关联这组pod。大部分公有云，
 		都会为LoadBalancer的service自动创建一个负载均衡器，通常还绑定了公网地址。只要把域名解析指向该地址，就实现了集群服务的对外暴露。
+		其实共有云一般也是通过nodeport实现的，即自动（或yaml手工指定）配置nodeport，然后访问负载均衡器时，将请求转发到nodeport上。和2的区别1的负载均衡器是公有云的。
 	
 	2、Deployment+NodePort模式的Service
 		同样用deployment模式部署ingress-controller，并创建对应的服务，但是type为NodePort。这样，ingress就会暴露在集群节点ip的特定端口上。由于nodeport暴露的端口是随机端口，
