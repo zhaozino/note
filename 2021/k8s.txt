@@ -622,7 +622,10 @@ Trouble Shooting
 	kubectl logs ${pod_name} //查看容器内部应用程序生成的日志。-c ${containerName} //如果有多个容器，需指定容器名。
 	
 
-
+k8s网络：
+  《docker 容器与容器云》
+  《kubernetes网络权威指南》
+  《kubernetes权威指南》
 
 
 
