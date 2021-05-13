@@ -1,8 +1,4 @@
 
-1、Istio是一个用于服务治理的开放平台；
-2、Istio是一个Service Mesh形态的用于服务治理的开放平台；
-3、Istio是一个与K8S紧密结合的适用于云原生场景的Service Mesh形态的用于服务治理的开放平台；
-
 服务治理涉及：连接(Connect)、安全(Secure)、策略执行(Control)、可观察性(Observe)
 1、连接：Istio通过集中配置的流量规则控制服务间的流量和调用，实现负载均衡、熔断、故障注入、重试、重定向等服务治理功能；
 2、安全：Istio提供透明的认证机制、通道加密、服务访问授权等安全能力，可增强服务访问的安全性；
@@ -11,6 +7,8 @@
 
 Istio的所有路由规则和控制策略都是通过k8s CRD实现的，因此各种规则策略对应的数据也被存储在Kube-apiserver中，不需要另外一个单独的APIServer和后端的配置管理。
 	所以，可以说Istio的APIServer就是k8s的APIServer，数据也自然地被存在了对应k8s的etcd中。
+
+kubernetes会自动创建与service同名的EndpointS对象；
 
 Istio的几个资源对象就是基于k8s的相应资源对象构建的，加上部分约束来满足istio服务模型的，Istio官方对这几个约束的描述如下：
 1、端口命名：对Istio的服务端口必须进行命名，而且名称只允许是<protocol>[-<suffix>]这种格式，其中<protocol>可以是tcp、http、http2、https、grpc、tls、mongo、mysql、redis等，
@@ -54,13 +52,14 @@ Istio的服务发现基于K8s构建，本章讲到的Istio的service对应k8s的
 k8s提供了一个Endpoints对象，这个Endpoints对象的名称和Service的名称相同，它是一个Pod IP: <targetPort>列表，负责维护service后端pod的变化。
 
 istio-pilot：控制面，服务发现、配置中心，主要是流量管理，如负载均衡、灰度、A/B Test；熔断、超时、重试；并发连接和请求数限制等；
-istio-telemetry：控制面，监控指标、日志、调用链等上报；
-istio-policy：提供服务调用的黑白名单、流量配额等，和pilot的区别是，它的流量策略需要调用第三方服务接口来查询；
-istio-citadel：安全、认证、授权；
+Mixer
+	istio-telemetry：控制面，监控指标、日志、调用链等上报；
+	istio-policy：提供服务调用的黑白名单、流量配额等，和pilot的区别是，它的流量策略需要调用第三方服务接口来查询；
+istio-citadel：安全、认证、授权，提供自动生成、分发、轮换和撤销秘钥和证书功能；
 istio-galley：负责对接pilot、mixer的相关配置、校验，第三方服务只需和galey对接配置即可，解耦第三方服务和piloy、mixer；
 istio-sidecar-injector：拦截pod生成side-car；
 istio-proxy：即Envoy，数据面
-istio-ingressgateway：入口
+istio-ingressgateway：入口处的Gateway，是一个Loadbalancer类型的service；
 
 
 Pilot流量治理的流程
@@ -98,7 +97,6 @@ Istio的Gateway只做4~6层的端口、TLS配置等基本功能，VirtualService
 VirtualService定义了对特定目标服务的一组流量规则。其是一个虚拟服务，将满足条件的流量都转发到对应的服务后端，这个服务后端可以是一个服务，也可以是在DestinationRule
 	中定义的服务的自己。
 
-
 mix
 1、Handlers
 	适配器封装了 Mixer 与特定的外部基础结构后端例如 Prometheus 或 Stackdriver 交互所需的逻辑。 handler 是负责保存适配器所需的配置状态的资源。例如，一个日志适配器可能需要日志收集后端的 IP 地址和端口。
@@ -106,35 +104,138 @@ mix
 	Instance 配置指定了请求属性到适配器输入的映射。
 3、Rules
 	Rules 指定何时使用特定 instance 调用特定 handler。 考虑一个示例，如果目标服务是 service1 并且 x-user 请求标头具有特定值，您希望把 requestduration 指标传递给 prometheus 处理程序。
+	
+VirtualService
+	apiVersion: networking.istio.io/v1alpha3
+	kind: VirtualService
+	metadata:
+		name: weather
+		namespace: weather
+	spec:
+		hosts:
+		- weather.com
+		http:
+		- match:
+			- uri:
+					prefix: /forecast/v1
+			route:
+			- destination:
+					host: forecast
+					subset: v1
+		- match:
+			- uri:
+					prefix: /forecast/v2
+			route:
+			- destination:
+					host: forecast
+					subset: v2
+	
+DestinationRule
+subset：Service的子集，这个服务子集是通过DestinationRule定义的。
+	apiVersion: networking.istio.io/vlalpha3
+	kind: DestinationRule
+	metadata:
+		name: forecast
+		namespace: weather
+	spec:
+		host: forecast
+		subsets:
+		- name: v2
+			lables:
+				version: v2
+			trafficPolicy:
+				loadBalancer:
+					simple: ROUND_ROBIN
+		- name: v1
+			labels:
+				version: v1
+			trafficPolicy:
+				loadBalancer:
+					simple: RANDOM
+	subsets 中 labels 的作用是筛选 pod，上面的配置将 forecast 的 pod 按照 label 分成了 v1、v2两组，pod的版本可以通过在Deployment中标记；
+	DestinationRule描述的是这个请求到达某个后端后怎么去处理。
+	
+	在istio的应用场景中，灰度发布是一个重要的场景，即要求一个Service有多个不同版本的实现。而k8s在语法上不支持一个Deployment上定义多个版本，
+	在istio中多个版本的定义是将一个Service关联到多个Deployment，每个Deployment都对应服务的一个版本。
 
+	VirtualService、DestinationRule的host指的是k8s Service的名字；
+	DestinationRule的labels指的是pod的标签，一般通过Deployment来指定Pod的标签；
 
+Gateway在网格边缘接收外部访问，并将流量转发到网格内的服务。
+	apiVersion: networking.istio.io/vlalpha3
+	kind: Gateway
+	metadata:
+		name: istio-gateway
+		namespace: istio-system
+	spec:
+		selector:
+			app: ingress-gateway //运行envoy的Pod的标签
+		servers:
+		- port:
+				number: 80 //外网访问端口
+				name: http
+				protocol: HTTP
+			hosts:
+			- weather.com
+	另外，配合Gateway的使用，VirtualService要做适当修改，在hosts上匹配Gateway上请求的主机名(weather.com)，并通过gateways字段关联定义的Gateway对象。
+	
+ServiceEntry：将网格外的服务加入网格中，像网格内的服务一样进行管理。
+	apiVersion: networking.istio.io/vlalpha3
+	kind: ServiceEntry
+	metadata:
+		name: weather-external
+	spec:
+		hosts:
+		- www.weatherdb.com
+		ports:
+		- number: 80
+			name: http
+			protocol: HTTP
+		resolution: DNS
+		location: MESH_EXTERNAL
+		
+Sidecar：对数据面的行为进行更精细的控制；
+	apiVersion: networking.istio.io/vlalpha3
+	kind: Sidecar
+	metadata:
+		name: default
+		namespace: weather
+	spec:
+		egress:
+		- hosts:
+			- "istio-system/*"
+			- "news/*"
+	
+Mixer：Adapter是通过一个代码实现加上一个配置模板定义的，Handler可以看做是对Adapter模板的实现，通过给模板上的参数赋值来进行实例化。Adapter是一种静态定义，Handler是动态的实现。
+	一个Adapter可以有任意多个实现。
+	apiVersion: "config.istio.io/v1alpha2"
+	kind: handler
+	metadata:
+		name: stdio
+		namespace: istio-system
+	spec:
+		compiledAdapter: stdio
+		params:
+			outputAsJson: true
+			
+	Instance定义了Adapter要处理的数据对象，通过模板为Adapter提供对元数据的定义。Mixer通过Instance把来自代理的属性拆分并发给不同的适配器。
+	Rule配置了一组规则，告诉Mixer有哪个Instance在什么时候被发放给哪个Handler来处理，一般包括一个匹配的表达式和执行动作。匹配表达式控制在什么时候调用Adapter，在Action里配置Adapter和Instance；
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	策略执行Adapter负责处理Mixer转发的Check请求，并将该请求分发给对应的策略执行后端，根据后端的判断逻辑返回拒绝或通过，来控制网格内服务间的访问。也是要配置Adapter、Handler、Instance；
+	
+sidecar注入有两种方式：一种通过istioctl命令行手工注入，另一种通过Istio Sidecar Injector自动注入。最终在应用pod中注入init容器和istio-proxy容器这两个sidecar容器。
+	sidecar injector是istio中实现自动注入sidecar的组件，它是以k8s准入控制器Admission Controller的形式运行的。Admission Controller的基本工资原理是拦截kube-apiserver的请求，
+	在对象持久化之前，认证鉴权之后进行拦截。Admission Controller有两种，一种内置的，一种用户自定义的。k8s允许用户以webhook的方式自定义准入控制器，sidecar injector就是这样
+	MutatingAdmissionWebhook;
+	
+	kubectl label namespace ${namespace} istio-injection=enabled
+	
+	sidecar流量拦截其实指基于iptables规则（由init容器在Pod启动的时候首先设置iptables规则），拦截应用容器Inbound/Outbound的流量，目前只能拦截TCP流量，不能拦截UDP，因为Envoy
+	目前并不支持UDP的转发。
+	
+	kubectl get service -n weather
+	
+	
+	
+	
+	
