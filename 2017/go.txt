@@ -2561,3 +2561,37 @@ type Context interface{
 	Value(key interface{}) interface{}
 }
 
+******************************************************************************************************************************************
+类型转换
+*Point(p)        // same as *(Point(p))
+(*Point)(p)      // p is converted to *Point
+<-chan int(c)    // same as <-(chan int(c))
+(<-chan int)(c)  // c is converted to <-chan int
+func()(x)        // function signature func() x
+(func())(x)      // x is converted to func()
+(func() int)(x)  // x is converted to func() int
+func() int(x)    // x is converted to func() int (unambiguous)
+
+接口之间在编译期间可以确定的情况下可以使用隐式类型转换，当然也可以用强制类型转换（不常用），所有情况下都可以使用类型断言。
+type A interface {}
+type B interface {Foo()}
+// 编译时无法确定能不能转换，因此用断言
+var a A
+var b = a.(B)
+// 编译时，可以确定
+var c B
+var d = A(c)
+// or var d = c
+// or d = c.(A)
+
+普通类型向接口转换，可以使用隐式类型转换
+type A interface {}
+var s = "abc"
+var a A
+a = s
+
+接口向普通类型转换，只能使用类型断言，因为编译器无法确定
+type A interface {}
+var s string
+var a A
+s = a.(string)
