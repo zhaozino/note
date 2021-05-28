@@ -1,3 +1,4 @@
+PromSQL
 
 custom_prometheus_request_count
 	查询最近（默认5分钟）的数据，agent上传的所有的指标点，不做任何聚合；
@@ -48,11 +49,22 @@ rate VS irate
 	还有另外一个好处，在面板(dashboards)选择比率范围(rate range)时，不需要考虑所有可能的拉取间隔(scrape intervals)。因为那样做通常会导致计算的时间比需要的长得多。
 	如果拉取动作(scrape)变得更频繁，图像会自动提高分辨率。
 	
+概念
+时间戳：Timestamp（1个）
+维度：Label（多个）
+指标：Metric（1个）
+
+特点
+海量数据：高吞吐量、高压缩率
+写入/无更新：缓存、预聚合、多维度聚合查询
+时间热度：冷热、分级
+
+	
 指标类型：
 	Counter：计数器，统计次数，只增不减，对重置的数据，一些聚合函数会自动处理，如rate等；
 	Gauge：仪表盘，计算内存等大小可变的度量；
-	Histogram：直方图，数据分布统计；
-	Summary：摘要，类似Histogram，统计方式不同；
+	Histogram：直方图，数据分布统计，反映了某个区间内的样本个数；
+	Summary：摘要，是采样点分位图统计，类似Histogram，统计方式不同；
 	
 	# HELP logback_events_total Number of error level events that made it to the logs
 	# TYPE logback_events_total counter
@@ -83,6 +95,11 @@ rate VS irate
 	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="1000"} 6.0 1562135533760
 	http_requests_histogram_bucket{serviceName="/user/help/metric", status="200", le="+Inf"} 8.0 1562135533760
 	
+	即：0 ~ 200分的有1个人，0~400分的有2个人，0~800分的有4个人，0~1000分的有6个人，一共有8个人，所有人的分数加在一起共1024分
+	
+	//http_requests_histogram_sum / http_requests_histogram_count = 平均值
+	//http_requests_histogram_sum是值的总和，http_requests_histogram_count是个数，_bucket指的是每个区间段的数量和
+	
 	
 	# HELP http_requests_histogram http请求分布
 	# TYPE http_requests_histogram summary
@@ -91,10 +108,72 @@ rate VS irate
 	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.5"} 100.0 1562135533760
 	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.9"} 200.0 1562135533760
 	http_requests_histogram{serviceName="/user/help/metric", status="200", quantile="0.99"} 400.0 1562135533760
-		
+	
+	即：50%的人都小于100分，90%的人都小于200分，99%的人都小于400分，一共8个人，所有人的分数加在一起共1024分
+	
+	和histogram区别，summary的_bucket指的是百分比区间段的数量和
+	
 **************************************************************************************************
 码客：sum(sum_over_time(custom_prometheus_request_count{serviceName="/user/help/test"}[1m]))
 
+Prometheus 以下几种的数据类型
+Instant vector：瞬时向量
+Range vector：区间向量
+Scalar：标量数据，一个浮点数
+String：字符串，一个字符串，暂时未用
+
+示例说明
+瞬时向量、区间向量
+	Prometheus会周期性的对Exporter的target进行PULL。
+	例如：在时间T1，Prometheus访问target，采样到的Metric信息是：Metric01=Vt1
+	例如：在时间T2，Prometheus访问target，采样到的Metric信息是：Metric01=Vt2 Metric02=Vt2
+	例如：在时间T3，Prometheus访问target，采样到的Metric信息是：Metric01=Vt3 Metric02=Vt3
+	上述示例说明，Metric01在T1时刻的值是Vt1，在T2时刻的值是Vt2。
+
+何为瞬时向量Instant Vector？
+	例如在上图中，我们查询最新的Metric信息，则会返回T3时刻的采样数据（假设T3时刻是距离服务器当前时间最近的采样时刻），包括Metric01=Vt3 Metric02=Vt3
+	这里的瞬时向量就是：Metric01=Vt3 Metric02=Vt3
+	官方示例：http_requests_total{job="prometheus"}，表示返回距离服务器当前时间最近的采样点的Metric信息。 
+
+何为区间向量Range Vector？
+	例如上图中，我们查询[startTime,endTime]之间的Metric信息，假设这个时间段包含三个采样时刻（T1，T2，T3）。
+	则查询返回的结果包括：
+		T1：Metric01=Vt1
+		T2：Metric01=Vt2 Metric02=Vt2
+		T3：Metric01=Vt3 Metric02=Vt3
+	这里的区间向量就是：包括上述5个metric信息。
+	官方示例：http_requests_total{job="prometheus"}[5m]，表示返回最近5分钟内的Metric信息。
+
+PromQL处理瞬时向量和区间向量上的区别
+	PromQL聚合操作，例如：sum，min，max，count等聚合函数，只能作用于瞬时向量上。 
+		// 这是错误的，因为count只能作用于瞬时向量，而这个查询本身返回的是区间向量
+		count(http_requests_total{job="prometheus"}[5m])
 	
-	
+	PromQL内置函数
+		ceil()向上取整，瞬时向量，ceil(v instant-vector) 将 v 中所有元素的样本值向上四舍五入到最接近的整数。
+			node_load5{instance="192.168.1.75:9100"} # 结果为 2.79
+			ceil(node_load5{instance="192.168.1.75:9100"}) # 结果为 3
+		changes()数据值变化的次数，区间向量
+			changes(v range-vector) 输入一个区间向量， 返回这个区间向量内每个样本数据值变化的次数（瞬时向量）。
+			#如果样本数据值没有发生变化，则返回结果为 1
+			changes(node_load5{instance="192.168.1.75:9100"}[1m]) # 结果为 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
