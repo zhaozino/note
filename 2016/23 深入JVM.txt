@@ -219,6 +219,64 @@ Integer a = new Integer(3);//这个是存在哪里
 		-XX:+DoEscapeAnalysis：逃逸分析
 		-XX:+EliminateLocks：锁消除
 		
+****************************************************************************************************************
+	可重入锁/不可重入锁
+		是否支持同一线程对同一个代码块重复加锁：线程A对代码块code加锁后，后续又重新走到这个代码块code进行加锁，如果支持重复加锁，就是可重入锁，否则不可重入；
+		不可重入锁 + 递归，容易造成死锁，一般通过lockedBy + lockCount来实现可重入锁；
+		
+		public class Lock{ //不可重入
+		    private boolean isLocked = false;
+		    public synchronized void lock() throws InterruptedException{
+			while(isLocked){    
+			    wait();
+			}
+			isLocked = true;
+		    }
+		    public synchronized void unlock(){
+			isLocked = false;
+			notify();
+		    }
+		}
+		
+		public class Count{
+		    Lock lock = new Lock();
+		    public void print(){
+			lock.lock();
+			doAdd();
+			lock.unlock();
+		    }
+		    public void doAdd(){
+			lock.lock();
+			//do something 被阻塞
+			lock.unlock();
+		    }
+		}
+		
+		public class Lock{ //可重入锁
+		    boolean isLocked = false;
+		    Thread  lockedBy = null;
+		    int lockedCount = 0;
+		    public synchronized void lock()
+			    throws InterruptedException{
+			Thread thread = Thread.currentThread();
+			while(isLocked && lockedBy != thread){
+			    wait();
+			}
+			isLocked = true;
+			lockedCount++;
+			lockedBy = thread;
+		    }
+		    public synchronized void unlock(){
+			if(Thread.currentThread() == this.lockedBy){
+			    lockedCount--;
+			    if(lockedCount == 0){
+				isLocked = false;
+				notify();
+			    }
+			}
+		    }
+		}
+		
 	锁在应用层的优化思路
 		1、减少锁持有的时间；
 		
