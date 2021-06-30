@@ -388,7 +388,7 @@ Cronjob：定时任务
 Init Container：与应用容器在本质上是一样的，但他们是仅运行一次就结束的任务，并且必须在成功执行完成后，系统才能继续执行下个容器。
 	
 Pod升级和滚动
-	kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1
+	kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1 #deployment是类型，nginx-deployment是deployment的名字，nginx是容器的名字，nginx:1.9.1是容器镜像信息
 	或kubectl edit deployment/nginx-deployment，修改文本保存；
 	
 	kubectl rollout status
