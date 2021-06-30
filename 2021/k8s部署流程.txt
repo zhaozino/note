@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+	kind: Deployment
+	metadata:
+		name: nginx-deployment
+	spec:
+		selector:
+			matchLabels:
+				app: nginx
+		replicas: 2 # tells deployment to run 2 pods matching the template
+		template:
+			metadata:
+				labels:
+					app: nginx
+			spec:
+				containers:
+				- name: nginx
+					image: nginx:1.14.2
+					ports:
+					- containerPort: 80
+					
+kubectl create -f tomcat-deployment.yaml
+kubectl get deployments
+
+apiVersion: v1
+	kind: Service
+	metadata:
+		name: nginx
+		labels:
+			app: nginx
+	spec:
+		ports:
+		- port: 80
+		clusterIP: None //Headless Service
+		selector:
+			app: nginx
+
+kubectl create -f nginx-svc.yaml
+kubectl get svc
+
+滚动更新容器镜像
+	kubectl set image deployment/nginx-deployment nginx=nginx:1.9.1 #deployment是类型，nginx-deployment是deployment的名字，nginx是容器的名字，nginx:1.9.1是容器镜像信息
+	或kubectl edit deployment/nginx-deployment，修改文本保存；
+	
+	kubectl rollout history deployment/nginx-deployment --revision=3 //查看特定版本信息
+	kubectl rollout undo deployment/nginx-deployment //撤销本次发布并回滚到上一个部署版本
+	kubectl rollout undo deployment/nginx-deployment --to-revision=2 //回滚到特定版本
+
+构建镜像并上传到远程镜像仓库
+	cd Dockerfile
+	docker build -t nginx:v3 .
+	
+	docker login -u zhaozino@163.com zhaozino-docker.pkg.coding.net
+	
+	docker tag nginx:v3 zhaozino-docker.pkg.coding.net/minimall/server/nginx:v3
+	
+	docker push zhaozino-docker.pkg.coding.net/minimall/server/nginx:v3
+	docker pull zhaozino-docker.pkg.coding.net/minimall/server/nginx:v3
+
+********************************************************************************
+k8s从私有仓库拉取镜像
+	一般拉取镜像前要先登录，docker login https://xxxxx，但k8s集群比较大时，在每个节点上login是不可行的。
+	在执行完docker login https://xxxxx并完成认证的时候，实际是在当前用户的home目录的.docker目录下生成了一个config.json文件，这个文件包含了认证信息。
+	 {
+    	"auths": {
+    		"https://myhub.fdccloud.com": {
+    			"auth": "xxxx",
+    			"email": "yanw02@mysoft.com.cn"
+    		},
+    	}
+   }
+	 可以将这个文件存到secret里使用，就可以通过私有仓库的认证了；
+	 
+1、在k8s master上通过docker login登录registry，生成config.json文件。然后执行如下命令，将文件转换成base64编码：
+	cat /root/.docker/config.json|base64 -w 0
+
+2、生成registrykey-myhub.yml的配置文件，内容如下：
+	apiVersion: v1
+	kind: Secret
+	metadata:
+		name: registrykey-myhub
+		namespace: default
+	type: kubernetes.io/dockerconfigjson
+	data:
+		.dockerconfigjson: ewoJImF1dGhzIjogewoJCSJodHRwczovL215aHViLmZkY2Nsb3VkLmNvbS8iOiB7CgkJCSJhdXRoIjogIllXUnRhVzQ2VFhsemIyWjBPVFU1TXpnPSIsCgkJCSJlbWFpbCI6ICJ5YW53MDJAbXlzb2Z0LmNvbS5jbiIKCQl9Cgl9Cn0=
+	
+	#创建secret：
+	kubectl create -f registrykey-myhub.yml
+	
+3、在创建pod时，指定imagePullSecrets，示例如下：
+	apiVersion: v1
+	kind: ReplicationController
+	metadata:
+		name: sqltools-ycz
+		labels:
+			name: sqltools-ycz
+	spec:
+		replicas: 1
+		selector:
+			name: sqltools-ycz
+		template:
+			metadata:
+				labels:
+					name: sqltools-ycz
+			spec:
+				containers:
+				- name: sqltools-ycz
+					image: myhub.fdccloud.com/common/sqltools
+					ports:
+					- containerPort: 80
+					env:
+					- name: DB_HOST
+						value: "mysql-ycz.default.svc.cluster.local"
+					- name: DB_NAME
+						value: "config"
+					- name: DB_USERNAME
+						value: "ycz"
+					- name: DB_PASSWORD
+						value: "77TqrfPaMbwaZXYu"
+					- name: CACHE_HOST
+						value: "memcached-ycz.default.svc.cluster.local"
+					- name: CACHE_PORT
+						value: "11211"
+					- name: CACHE_PREFIX
+						value: "ycz"
+				nodeSelector:
+					kubernetes.io/hostname: k8s-master
+				imagePullSecrets:
+				- name: registrykey-myhub
+
+
+
+
+
+
