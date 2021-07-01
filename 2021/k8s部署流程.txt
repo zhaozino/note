@@ -86,46 +86,54 @@ k8s从私有仓库拉取镜像
 	#创建secret：
 	kubectl create -f registrykey-myhub.yml
 	
+	或者用文件路径：
+	kubectl create secret generic regcred \
+     --from-file=.dockerconfigjson=<path/to/.docker/config.json> \
+     --type=kubernetes.io/dockerconfigjson
+	
 3、在创建pod时，指定imagePullSecrets，示例如下：
-	apiVersion: v1
-	kind: ReplicationController
+	
+	apiVersion: apps/v1
+	kind: Deployment
 	metadata:
-		name: sqltools-ycz
-		labels:
-			name: sqltools-ycz
+		name: mynginx-deployment
 	spec:
-		replicas: 1
 		selector:
-			name: sqltools-ycz
+			matchLabels:
+				app: mynginx
+		replicas: 2 # tells deployment to run 2 pods matching the template
 		template:
 			metadata:
 				labels:
-					name: sqltools-ycz
+					app: mynginx
 			spec:
 				containers:
-				- name: sqltools-ycz
-					image: myhub.fdccloud.com/common/sqltools
+				- name: mynginx
+					image: zhaozino-docker.pkg.coding.net/minimall/server/mynginx:v1
 					ports:
 					- containerPort: 80
-					env:
-					- name: DB_HOST
-						value: "mysql-ycz.default.svc.cluster.local"
-					- name: DB_NAME
-						value: "config"
-					- name: DB_USERNAME
-						value: "ycz"
-					- name: DB_PASSWORD
-						value: "77TqrfPaMbwaZXYu"
-					- name: CACHE_HOST
-						value: "memcached-ycz.default.svc.cluster.local"
-					- name: CACHE_PORT
-						value: "11211"
-					- name: CACHE_PREFIX
-						value: "ycz"
-				nodeSelector:
-					kubernetes.io/hostname: k8s-master
 				imagePullSecrets:
 				- name: registrykey-myhub
+					
+	kubectl create -f mynginx-deployment.yaml
+	kubectl get deployments
+
+	apiVersion: v1
+	kind: Service
+	metadata:
+	  name: mynginx
+	  labels:
+	    app: mynginx
+	spec:
+		ports:
+		- port: 8181
+		clusterIP: None //Headless Service
+		selector:
+			app: mynginx
+
+	kubectl create -f mynginx-svc.yaml
+	kubectl get svc
+
 
 
 
