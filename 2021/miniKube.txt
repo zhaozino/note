@@ -19,7 +19,7 @@
 10、验证
   kubectl get po -A
   
-  minikube board & //可以用nginx做反向代理
+  minikube dashboard & //可以用nginx做反向代理
   
 11、安装istio
   
