@@ -21,5 +21,13 @@
   
   minikube dashboard & //可以用nginx做反向代理
   
-11、安装istio
+  设置nginx.conf反向代理端口为dashboard的端口，启动nginx，访问http://ip:port/api/v1/namespaces/kubernetes-dashboard/services/http:kubernetes-dashboard:/proxy/#/overview?namespace=default
   
+11、安装istio
+  https://istio.io/latest/zh/docs/setup/getting-started/
+  istioctl install --set profile=demo -y
+  kubectl label namespace default istio-injection=enabled
+  
+  验证
+  kubectl exec "$(kubectl get pod -l app=ratings -o jsonpath='{.items[0].metadata.name}')" -c ratings -- curl -s productpage:9080/productpage | grep -o "<title>.*</title>"
+  返回：<title>Simple Bookstore App</title>
