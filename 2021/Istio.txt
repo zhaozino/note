@@ -248,6 +248,12 @@ Pilot：允许用户创建Envoy代理之间的流量转发路由规则，并配�
 
 
 
+kubectl get service istio-ingressgateway -n istio-system -o yaml //上面配置了port、targetPort、nodePort
+kubectl get deployment istio-ingressgateway -n istio-system -o yaml
+
+https://raw.githubusercontent.com/istio/istio/release-1.10/samples/bookinfo/networking/bookinfo-gateway.yaml
+kind: Gateway中的servers.port.number和service istio-ingressgateway的port相对应，service istio-ingressgateway规定了envoy监听哪些端口，Gateway则定义了这些端口的路由规则，类似nginx的路由定义；
+
 
 
 
