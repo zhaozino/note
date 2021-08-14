@@ -1,0 +1,243 @@
+
+Raft角色
+Leader：负责日志的同步管理，处理来自客户端的请求，与Follower保持heartBeat的联系；
+Follower：响应Leader的日志同步请求，响应Candidate的邀票请求，以及把客户端请求到Follower的事务转发（重定向）给Leader；
+	Follower是被动的，不会发送任何请求，只是简单地响应来自Leader或者Candidate的请求。Leader负责处理所有的客户端请求（如果一个客户端和Follower联系，那么Follower会把请求重定向给Leader）；
+Candidate：候选者，负责选举投票，集群刚启动或者Leader宕机时，状态为Follower的节点将转为Candidate并发起选举，选举胜出（获得超过半数节点的投票）后，从Candidate转为Leader状态；
+
+Raft三个子问题
+1、选举：当Leader宕机或者集群初创时，一个新的Leader需要被选举出来；
+2、日志复制：Leader接收来自客户端的请求并将其以日志条目的形式复制到集群中的其他节点，并且强制要求其他节点的日志和自己保持一致；
+3、安全性：如果有任何服务器节点已经应用了一个确定的日志条目到它的状态机中，那么其他服务器节点不能在同一个日志索引位置应用一个不同的指令；
+
+1、选举
+	在集群刚启动时，所有节点的状态都是Follower，由于没有Leader，Followers无法与Leader保持心跳（Heart Beat）（节点启动后在一个选举定时器周期内未收到心跳和投票请求），
+	因此，Follower会认为Leader已经下线，进而转为Candidate状态。然后，Candidate将向集群中其他节点请求投票，同意自己升级为Leader。
+	如果Candidate收到超过半数节点的投票（N/2+1），它将获胜成为Leader。
+
+	Term：任期数，顺序递增，每个leader工作一段时间，然后选出新的leader继续负责。这根民主社会的选举很像，每一届新的履职期称之为一届任期，在raft协议中，
+		也是这样的，对应的术语叫term。；
+
+	在任一任期内，单个节点最多只能投一票；如果任期内没选出leader（选举超时时间），则进入下一任期；
+
+	第一阶段：所有节点都是 Follower。
+		上面提到，一个应用 Raft 协议的集群在刚启动（或 Leader 宕机）时，所有节点的状态都是 Follower，初始 Term（任期）为 0。同时启动选举定时器，
+		每个节点的选举定时器超时时间都在 100~500 毫秒之间且并不一致（避免同时发起选举）。
+
+	第二阶段：Follower 转为 Candidate 并发起投票。
+		没有 Leader，Followers 无法与 Leader 保持心跳（Heart Beat），节点启动后在一个选举定时器周期内未收到心跳和投票请求，则状态转为候选者 Candidate 状态，且 Term 自增，
+		并向集群中所有节点发送投票请求并且重置选举定时器。
+		注意，由于每个节点的选举定时器超时时间都在 100-500 毫秒之间，且彼此不一样，以避免所有 Follower 同时转为 Candidate 并同时发起投票请求。换言之，
+		最先转为 Candidate 并发起投票请求的节点将具有成为 Leader 的“先发优势”。
+
+	第三阶段：投票策略。
+		节点收到投票请求后会根据以下情况决定是否接受投票请求（每个 follower 刚成为 Candidate 的时候会将票投给自己）：
+		1、请求节点的 Term 大于自己的 Term，且自己尚未投票给其它节点，则接受请求，把票投给它；
+		2、请求节点的 Term 小于自己的 Term，且自己尚未投票，则拒绝请求，将票投给自己。
+		各个节点的Term怎么更新？？？？？？？最后一条日志的term
+		
+	第四阶段：Candidate 转为 Leader。
+		一轮选举过后，正常情况下，会有一个 Candidate 收到超过半数节点（N/2 + 1）的投票，它将胜出并升级为 Leader。然后定时发送心跳给其它的节点，
+		其它节点会转为 Follower 并与 Leader 保持同步，到此，本轮选举结束。
+		注意：有可能一轮选举中，没有 Candidate 收到超过半数节点投票，那么将进行下一轮选举。
+
+	任何节点都可以发起一个选举周期吗？比如一个节点突然掉线，收不到leader的心跳，它就可以term+1发起新一轮的选举吗？
+
+2、日志复制
+	在一个 Raft 集群中，只有 Leader 节点能够处理客户端的请求（如果客户端的请求发到了 Follower，Follower 将会把请求重定向到 Leader），
+	客户端的每一个请求都包含一条被复制状态机执行的指令。Leader 把这条指令作为一条新的日志条目（Entry）附加到日志中去，然后并行得将附加条目发送给 Followers，
+	让它们复制这条日志条目。
+	当这条日志条目被 Followers 安全复制，Leader 会将这条日志条目应用到它的状态机中，然后把执行的结果返回给客户端。如果 Follower 崩溃或者运行缓慢，再或者网络丢包，
+	Leader 会不断得重复尝试附加日志条目（尽管已经回复了客户端）直到所有的 Follower 都最终存储了所有的日志条目，确保强一致性。
+
+	第一阶段：客户端请求提交到 Leader。
+		如下图所示，Leader 收到客户端的请求，比如存储数据 5。Leader 在收到请求后，会将它作为日志条目（Entry）写入本地日志中。需要注意的是，
+		此时该 Entry 的状态是未提交（Uncommitted），Leader 并不会更新本地数据，因此它是不可读的。
+
+	第二阶段：Leader 将 Entry 发送到其它 Follower
+		Leader 与 Floolwers 之间保持着心跳联系，随心跳 Leader 将追加的 Entry（AppendEntries）并行地发送给其它的 Follower，并让它们复制这条日志条目，
+		这一过程称为复制（Replicate）。
+		
+		有几点需要注意：
+		1. 为什么 Leader 向 Follower 发送的 Entry 是 AppendEntries 呢？
+		因为 Leader 与 Follower 的心跳是周期性的，而一个周期间 Leader 可能接收到多条客户端的请求，因此，随心跳向 Followers 发送的大概率是多个 Entry，
+		即 AppendEntries。当然，在本例中，我们假设只有一条请求，自然也就是一个Entry了。
+
+		2. Leader 向 Followers 发送的不仅仅是追加的 Entry（AppendEntries）。
+		在发送追加日志条目的时候，Leader 会把新的日志条目紧接着之前条目的索引位置（prevLogIndex）， Leader 任期号（Term）也包含在其中。
+		如果 Follower 在它的日志中找不到包含相同索引位置和任期号的条目，那么它就会拒绝接收新的日志条目，因为出现这种情况说明 Follower 和 Leader 不一致。
+
+		3. 如何解决 Leader 与 Follower 不一致的问题？
+		在正常情况下，Leader 和 Follower 的日志保持一致，所以追加日志的一致性检查从来不会失败。然而，Leader 和 Follower 一系列崩溃的情况会使它们的日志处于不一致状态。
+		Follower可能会丢失一些在新的 Leader 中有的日志条目，它也可能拥有一些 Leader 没有的日志条目，或者两者都发生。丢失或者多出日志条目可能会持续多个任期。
+		要使 Follower 的日志与 Leader 恢复一致，Leader 必须找到最后两者达成一致的地方（说白了就是回溯，找到两者最近的一致点），然后删除从那个点之后的所有日志条目，
+		发送自己的日志给 Follower。所有的这些操作都在进行附加日志的一致性检查时完成。
+		Leader 为每一个 Follower 维护一个 nextIndex，它表示下一个需要发送给 Follower 的日志条目的索引地址。当一个 Leader 刚获得权力的时候，它初始化所有的 nextIndex 值，
+		为自己的最后一条日志的 index 加 1。如果一个 Follower 的日志和 Leader 不一致，那么在下一次附加日志时一致性检查就会失败。在被 Follower 拒绝之后，
+		Leader 就会减小该 Follower 对应的 nextIndex 值并进行重试。最终 nextIndex 会在某个位置使得 Leader 和 Follower 的日志达成一致。当这种情况发生，附加日志就会成功，
+		这时就会把 Follower 冲突的日志条目全部删除并且加上 Leader 的日志。一旦附加日志成功，那么 Follower 的日志就会和 Leader 保持一致，并且在接下来的任期继续保持一致。
+
+	第三阶段：Leader 等待 Followers 回应。
+		Followers 接收到 Leader 发来的复制请求后，有两种可能的回应：
+		写入本地日志中，返回 Success；
+		一致性检查失败，拒绝写入，返回 False，原因和解决办法上面已做了详细说明。
+		需要注意的是，此时该 Entry 的状态也是未提交（Uncommitted）。完成上述步骤后，Followers 会向 Leader 发出 Success 的回应，当 Leader 收到大多数 Followers 的回应后，
+		会将第一阶段写入的 Entry 标记为提交状态（Committed），并把这条日志条目应用到它的状态机中。
+
+	第四阶段：Leader 回应客户端。
+		完成前三个阶段后，Leader会向客户端回应 OK，表示写操作成功。
+	
+	第五阶段，Leader 通知 Followers Entry 已提交
+		Leader 回应客户端后，将随着下一个心跳通知 Followers，Followers 收到通知后也会将 Entry 标记为提交状态。至此，Raft 集群超过半数节点已经达到一致状态，
+		可以确保强一致性。需要注意的是，由于网络、性能、故障等各种原因导致“反应慢”、“不一致”等问题的节点，最终也会与 Leader 达成一致。
+		
+4. Raft 算法之安全性
+	前面描述了 Raft 算法是如何选举 Leader 和复制日志的。然而，到目前为止描述的机制并不能充分地保证每一个状态机会按照相同的顺序执行相同的指令。
+	例如，一个 Follower 可能处于不可用状态，同时 Leader 已经提交了若干的日志条目；然后这个 Follower 恢复（尚未与 Leader 达成一致）而 Leader 故障；
+	如果该 Follower 被选举为 Leader 并且覆盖这些日志条目，就会出现问题，即不同的状态机执行不同的指令序列。
+	鉴于此，在 Leader 选举的时候需增加一些限制来完善 Raft 算法。这些限制可保证任何的 Leader 对于给定的任期号（Term），都拥有之前任期的所有被提交的日志条目
+	（所谓 Leader 的完整特性）。关于这一选举时的限制，下文将详细说明。
+	
+	4.1 选举限制
+		在所有基于 Leader 机制的一致性算法中，Leader 都必须存储所有已经提交的日志条目。为了保障这一点，Raft 使用了一种简单而有效的方法，以保证所有之前的任期号中已经提交
+		的日志条目在选举的时候都会出现在新的 Leader 中。换言之，日志条目的传送是单向的，只从 Leader 传给 Follower，并且 Leader 从不会覆盖自身本地日志中已经存在的条目。
+		Raft 使用投票的方式来阻止一个 Candidate 赢得选举，除非这个 Candidate 包含了所有已经提交的日志条目。Candidate 为了赢得选举必须联系集群中的大部分节点。
+		这意味着每一个已经提交的日志条目肯定存在于至少一个服务器节点上。如果 Candidate 的日志至少和大多数的服务器节点一样新（这个新的定义会在下面讨论），
+		那么它一定持有了所有已经提交的日志条目（多数派的思想）。投票请求的限制中请求中包含了 Candidate 的日志信息，然后投票人会拒绝那些日志没有自己新的投票请求。
+		Raft 通过比较两份日志中最后一条日志条目的索引值和任期号，确定谁的日志比较新。如果两份日志最后条目的任期号不同，那么任期号大的日志更加新。如果两份日志最后的
+		条目任期号相同，那么日志比较长的那个就更加新。
+
+	4.2 提交之前任期内的日志条目
+		如同 4.1 节介绍的那样，Leader 知道一条当前任期内的日志记录是可以被提交的，只要它被复制到了大多数的 Follower 上（多数派的思想）。
+		如果一个 Leader 在提交日志条目之前崩溃了，继任的 Leader 会继续尝试复制这条日志记录。然而，一个 Leader 并不能断定被保存到大多数 Follower 上的一个之前任期里的日志条目 
+		就一定已经提交了。这很明显，从日志复制的过程可以看出。
+		鉴于上述情况，Raft 算法不会通过计算副本数目的方式去提交一个之前任期内的日志条目。只有 Leader 当前任期里的日志条目通过计算副本数目可以被提交；
+		一旦当前任期的日志条目以这种方式被提交，那么由于日志匹配特性，之前的日志条目也都会被间接的提交。在某些情况下，Leader 可以安全地知道一个老的日志条目是否已经被提交
+		（只需判断该条目是否存储到所有节点上），但是 Raft 为了简化问题使用了一种更加保守的方法。
+		当 Leader 复制之前任期里的日志时，Raft 会为所有日志保留原始的任期号，这在提交规则上产生了额外的复杂性。但是，这种策略更加容易辨别出日志，即使随着时间和日志的变化，
+		日志仍维护着同一个任期编号。此外，该策略使得新 Leader 只需要发送较少日志条目。
+
+在Raft算法中，有两个timeout机制来控制领导人选举：
+	1、一个是选举定时器（eletion timeout）：即Follower等待成为Candidate状态的等待时间，这个时间被随机设定为150ms~300ms之间
+	2、另一个是headrbeat timeout：在某个节点成为Leader以后，它会发送Append Entries消息给其他节点，这些消息就是通过heartbeat timeout来传送，
+	Follower接收到Leader的心跳包的同时也重置选举定时器。
+
+完成Leader选举后，Leader就会定时给其他节点发送心跳包（Heartbeat），告诉其他节点Leader还在运行，同时重置这些节点的选举定时器。
+
+Leader节点会记录已经交的最大日志index，之后后续的heartbeat和日志复制请求（Append Entries）都会带上这个值，这样其他节点就知道哪些命令已经提交了，
+	就可以让状态机（State  Machine）执行日志中的命令，使得所有节点的状态机数据都保持一致。
+
+当Leader节点发送日志复制请求的时，它会带上上一次的日志记录的index和term。
+
+follower发现自己的日志中不存在这个命令，于是拒绝这个请求。此时，Leader节点知道发生了不一致，于是递减nextIndex，并重新给A节点发送日志复制请求，
+	直到找到日志一致的地方为止。然后把Follower节点的日志覆盖为Leader节点的日志内容。
+也就是说，Raft算法对于日志内容不一致的请求，会采取Leader节点的日志内容覆盖Follower节点的日志内容的做法，先找到两者日志记录第一次不一致的地方，
+	然后一直覆盖到最新提交的命令位置。
+
+逻辑时钟(term)
+	选举过程有个term参数，这个参数就是逻辑时钟，这是一个整数，全局递增；Raft 把时间分割成任意长度的任期，用term来标识每一届leader的任期，
+	这样可以保证在一个任期内只有一个Leader。
+	
+逻辑时钟规则如下：
+	1、Candidate发起选举时就将自己的term加1，然后发起投票请求；
+	2、收到投票请求的节点比较请求的term和自己的term，如果请求的term比自己的大，则更新自己的term；
+	3、这样在即使每个节点的时间不一样的情况下也可以推进逻辑时钟；
+
+关于选举还有其它一些规则：
+	1、针对Follower
+		如果在超过选举超时时间的情况之前都没有收到Leader的心跳，或者是Candidate请求投票的，就自己变成Candidate;
+	2、针对Candidate
+		开始选举后的动作如下：自增当前的任期号（currentTerm）; 给自己投票; 重置选举超时计时器;发送请求投票的 RPC 给其他所有服务器; 
+		收到响应后的规则：如果接收到大多数服务器的选票，那么就变成Leader；如果接收到来自新的领导人的心跳信息，则转变成Leader；如果选举过程超时，再次发起一轮选举; 
+	3、针对Leader
+		一旦成为领导人：发送空的附加日志 RPC（心跳）给其他所有的服务器；在一定的空余时间之后不停的重复发送，以阻止跟随者超时。
+
+Raft要求选举出来leader的log要更 up-to-date， 其实直觉上也可以理解，含有这条log的节点相对于不含有这条log的节点肯定是更up-to-date。
+up-to-date的意思是先判断最后一条log 的term哪个大，term不一样，term大的更up-to-date；term一样大的，log更长的more up-to-date。注意，term是指最后一条log的term，
+不是currentTerm，因为脑裂的那部分节点可以一直递增自己的term发起选举。
+
+
+如果在leader向follower发送确认的时候，leader挂掉会不会有问题？？？？会导致一部分节点的日志已commit，一部分节点的日志未commit；
+		可以1、leader先commit；2、再follower再commit；3、再返回client commit；
+		这样即使如果1、2之间leader宕机，这条消息就消失了，不会影响client端；
+		如果2之后leader宕机，消息已提交也不会影响client端；
+		
+过程：		
+	1、client发送命令；
+	2、leader封装client命令为日志，存储到本地，然后发送复制日志命令给follower；
+	3、leader确认大多数follower已复制日志，则设置本地日志为commit状态；
+	4、leader响应client，命令已执行成功；
+	5、leader发送heart beat给follower，让follower设置本地日志为commit状态；
+
+第一个场景：如果在2阶段，少部分follower复制成功，然后leader挂掉了；
+第二个场景：如果在2阶段，大部分follower复制成功，然后leader挂掉了；
+第三个场景：如果在3阶段完成后，leader挂掉了；
+第四个场景：如果在4阶段完成后，leader挂掉了；
+第五个场景：如果在5阶段过程中后，少部分follower已commit，leader挂掉了；
+
+成为leader的节点，其记录的commited日志条数必然是投票者中最多的，否则其他节点不会给你投票
+如果多个节点commited日志一样多，那么看谁uncommit日志的term更大，条数更多。
+
+Leader为每一个Follower节点维护一个nextIndex计数，对于每一个Follower节点，首先设置nextIndex为Leader节点的下一个index位置（图中为11），然后依次向前比较Leader和Follower对应的记录，直到找到重合的记录为止，再将所有Leader节点的记录复制到Follower节点。
+
+Leader给Follower的复制日志请求中（AppendEntries RPC），不仅包含具体的操作，还包含本次插入的前一个位置的index和Term；这样对于刚才的问题，s5节点就不会直接追加日志了，而会检查发现自己有日志缺失，进而由Leader将缺失的日志全部同步过来（实际上Leader里记录了发送给每一个Follower的日志序号）；
+
+****************************************************************************************************************
+raft关键在于抽屉理论，二阶段，选举约束，一共3个部分。
+
+抽屉理论基本都懂，5个人中有3个男人，那么任意抽3个人至少有1个男人。
+
+leader处理请求分4步：
+
+日志复制给半数节点，失败无限重试
+半数复制成功，则本地commit提交（写提交日志，执行业务逻辑），为啥leader此刻义无反顾？继续往后看。
+返回客户端告知成功，leader给用户承诺结果了，这是raft算法要坚决想办法保证的。
+leader异步的把commit事件广播给follower们。
+上述先复制，再广播提交对于follower们就是2阶段。
+
+这4步依次完成，中间任何一步leader宕机，都需要有恢复机制，但是我需要先说一下选举的约束：
+
+需要半数以上节点给你投票，你才能成为leader
+成为leader的节点，其记录的commited日志条数必然是投票者中最多的，否则其他节点不会给你投票
+如果多个节点commited日志一样多，那么看谁uncommit日志的term更大，条数更多。
+接下来，我们看raft是如何处置异常场景的。
+
+1，leader复制给少数节点，然后宕机。
+
+leader肯定没有机会commit这条日志，其他节点进行选举。
+
+如果复制成功的少数节点在选举行列中，那么因为它们相比其他节点有uncommit日志，所以优先成为leader。（至于uncommit的日志要不要commit，我们后面说）
+
+如果选举之中没有复制成功节点，那么新leader会通知复制成功节点删除自己的uncommit日志。
+
+因为这个场景压根没有给客户端承诺，所以是新Leader重新提交还是丢弃日志，都无所谓。
+
+2，leader复制给多数节点，然后宕机。
+
+其他节点进行选举，根据抽屉理论，至少有1个复制成功的节点在选举之列，必然成为leader。（至于uncommit的日志要不要commit，我们后面说）
+
+这个场景虽然没有给客户端承诺，但是日志并没有丢，所以日志一旦被后续提交，会导致客户端重试请求时发生重复操作。
+
+3，leader复制给多数节点，本地提交成功，返回客户端成功，然后宕机。
+
+leader没来得及广播commit给follower，或者只广播commit了少数节点，然后其他节点进行选举。
+
+如果commit节点在选举行列，那么它比其他节点commit的日志更多，成为leader。
+
+如果commit节点不在选举行列，根据抽屉理论，其他节点中至少有1个节点是复制过日志的，那么复制成功节点成为leader，它的日志序列和commit过的节点一样，无非是日志没有被commit。
+
+这个场景承诺了客户端，无论如何日志是不允许丢的，所以上述2个分支的leader都拥有日志，只是一个commit过了一个没commit过，所以没commit过的一定要想办法commit掉。
+
+4，leader复制给多数节点，本地提交成功，返回客户端成功，广播commit给了多数节点，然后宕机。
+
+其他节点选举，根据抽屉理论，至少有1个commit成功的节点参与选举，成为leader。
+
+给客户端承诺了，新leader也是commit过的，所以没有问题。
+
+最后就是针对场景1与2，新leader是否应该立即commmit日志的问题。
+
+答案是，不应该立即commit前任leader的日志，而是当leader收到新的请求并复制给大多数节点后，把老日志和新日志一起commit提交，并广播给follower。
+
+新Leader不能直接commit前任留下的日志是有原因的，否则会导致raft算法错误。
+
+https://zhuanlan.zhihu.com/p/27910576
