@@ -106,6 +106,7 @@ java泛型：参数化类型，<T>
 8、访问者
 	http://c.biancheng.net/view/1397.html
 	https://www.runoob.com/design-pattern/visitor-pattern.html
+	https://blog.csdn.net/sdp1103285470/article/details/98941471
 	角色：Visitor、VisitorA、VisitorB、Node、NodeA、NodeB、ObjectStrcture、client；
 	Visitor(+visite(NodeA)、+visite(NodeB))、Node(+accept(Visitor));
 	当系统中存在一个较为复杂的对象结构，且不同访问者对其所采取的操作也不相同时，可以考虑使用访问者模式进行设计。
@@ -121,6 +122,7 @@ java泛型：参数化类型，<T>
 	Builder(+buildPart1()、+buildPart2()、+retrieveResult:product)、Director(Builder、+construct());
 	将一个复杂的构建与其表示相分离，使得同样的构建过程可以创建不同的表示。 [构建与表示分离，同构建不同表示]
 	
+https://zhuanlan.zhihu.com/p/97499017
 12、代理模式：https://www.cnblogs.com/daniels/p/8242592.html
 	角色：subject、ProxySubject、RealSubject;
 	subject(+request())、ProxySubject(RealSubject、request()、+preRequest()、+postRequest())、RealSubject(+request());
