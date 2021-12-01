@@ -180,7 +180,7 @@ Volume：k8s的Volume概念、用户和目的与Docker的Volume比较类似，�
 Persistent Volume
 	Volume被定义在Pod上的，属于计算资源的一部分，而实际上，网络存储是相对独立于计算资源而存在的一种实体资源。
 	Persistent Volume(PV)和与之相关联的Persistent Volume Claim(PVC)也起到了类似的作用。
-	pv属于集群级别资源  不属于任何名称空间 定义的时候不能指定名称空间，用户在创建pod的时候同时创建与pv一一对应的pvc资源；
+	pv属于集群级别资源  不属于任何名称空间 定义的时候不能指定名称空间，用户在创建pod的时候同时创建与pv一一对应的pvc资源；同一个PVC可以被多个Pod同时挂载使用；
 	PVC可以理解为持久化存储的 它提供了对某种持久化存储的描述,但不提供具体的实现，持久化存储的实现部分则由PV负责完成；
 	PVC如何与特定PV进行绑定？其实就是将这个PV对象的名字,填在PVC对象的spec.volumeName字段上即可；
 	Persistent Volume和Persistent Volume Claim类似Pods和Nodes的关系，创建Pods需要消耗一定的Nodes的资源。而Persistent Volume则是提供了各种存储资源，
