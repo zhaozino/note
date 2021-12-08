@@ -1,0 +1,35 @@
+protocol buffers：是语言中立、平台无关、实现结构化数据序列化的可扩展机制。
+
+task.proto
+  syntax="proto3";
+  package proto;
+	option go_package = "../generate;proto";//表示当前文件下生成一个go的文件，包名是proto
+	
+	import "validator.proto";
+	
+	service Task {
+	  rpc DescPkgListV2(DescPkgListV2Req) returns (DescPkgListV2Resp);
+	}
+	
+	message DescPkgListV2Req{
+	  string id = 1; //生成的go代码，会自动转成ID，否则属性无法访问，但生成的json还是小写；
+		string name = 2;
+	}
+	
+	message DescPkgListV2Resp{
+	  string value = 1;
+	}
+	
+当调用gRPC服务时，客户端的gRPC库会使用protocol buffers，并将RPC的请求编排（marshal）为protocol buffers格式，然后将其通过HTTP/2进行发送。
+在服务器端，请求会被解排（unmarshal），对应的过程调用会使用protocol buffers来执行。
+
+1、安装grpc库：go get -u google.golang.org/grpc
+2、安装go的protoc插件：
+  go get google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
+  go get google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
+3、自动生成代码：https://blog.csdn.net/qq_41004932/article/details/120478616
+  protoc -I proto --go_out=generate --go-grpc_out=generate proto/product_info.proto
+  -I proto：依赖的import的proto在哪里找；
+	--go_out=generate：.pb.go文件生成的位置
+	--go-grpc_out=generate：_grpc.pb.go文件生成的位置
+	
