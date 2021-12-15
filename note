@@ -48,13 +48,18 @@ k8s：21.02
 2、流量转用例；
 grpc：
 	1、protocol buffer编解码；
-	2、http2；over
-	3、grpc序列化、反序列化；
+	2、grpc序列化、反序列化；
+	3、http2；over
 	4、go反射；over
 	5、go单元测试；testing；over
 	6、gomonkey、mock、grpc单元测试；over
-	5、go monkey、AspectGo、AspectGoPlus、goreplay；
-	6、GOPRIVATE；over
+	5、go monkey；over
+	6、AspectGo、AspectGoPlus；
+	7、goreplay；
+	8、GOPRIVATE；over
+	9、logreplay trpc；
+	10、goreplay trpc；
+	11、trpc example；
 mysql、redis拦截录制、回放：12.12
 调用链的对接：12.15
 yaml的生成、解析：12.17
