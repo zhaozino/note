@@ -54,16 +54,16 @@ grpc：
 	5、go单元测试；testing；over
 	6、gomonkey、mock、grpc单元测试；over
 	5、go monkey；over
-	6、AspectGo、AspectGoPlus；
-	7、goreplay；
+	6、AspectGo、AspectGoPlus；12.19
+	7、goreplay；12.17
 	8、GOPRIVATE；over
-	9、logreplay trpc；
-	10、goreplay trpc；
-	11、trpc example；
-mysql、redis拦截录制、回放：12.12
-调用链的对接：12.15
-yaml的生成、解析：12.17
-生成单元测试代码：12.19
-WebUI、小程序UI的录制、回放、视频对比：12.23
+	9、logreplay trpc；12.16
+	10、goreplay trpc；12.17
+	11、trpc example；over
+mysql、redis拦截录制、回放：12.21
+调用链的对接：12.23
+yaml的生成、解析：12.25
+生成单元测试代码：12.27
+WebUI、小程序UI的录制、回放、视频对比：12.31
 生产压测：12.30
 PPT：01.06
