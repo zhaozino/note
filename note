@@ -57,9 +57,10 @@ grpc：
 	6、AspectGo、AspectGoPlus；12.19
 	7、goreplay；12.17
 	8、GOPRIVATE；over
-	9、logreplay trpc；12.16
+	9、logreplay trpc；12.16 over
 	10、goreplay trpc；12.17
 	11、trpc example；over
+	12、logreplay源码分析；
 mysql、redis拦截录制、回放：12.21
 调用链的对接：12.23
 yaml的生成、解析：12.25
